@@ -13,7 +13,7 @@ from pathlib import Path
 from nonebot import on_command, get_bot
 from nonebot import scheduler
 import pytz
-
+import requests
 import hoshino
 from hoshino import R, Service, priv, util
 from hoshino.typing import CQEvent
@@ -69,6 +69,72 @@ if not data:
 else:
     sv.logger.info(f"📊 已加载 {len(data)} 条活动数据")
 
+@sv.on_command('更新半月刊', aliases=('更新数据', '刷新半月刊'))
+async def update_half_monthly(session):
+    try:
+        # 检查权限
+        if not priv.check_priv(session.event, priv.ADMIN):
+            await session.send("⚠️ 需要管理员权限才能更新数据")
+            return
+
+        # 发送等待消息
+        msg_id = (await session.send("⏳ 正在更新半月刊数据，请稍候..."))['message_id']
+        
+        # GitHub raw文件URL
+        github_url = "https://raw.githubusercontent.com/duoshoumiao/PCR--Fortnightly-magazine-/main/data.json"
+        
+        # 下载文件
+        try:
+            response = requests.get(github_url, timeout=15)
+            response.raise_for_status()
+            
+            # 验证JSON格式
+            try:
+                json.loads(response.text)
+            except json.JSONDecodeError:
+                await session.send("❌ 下载的数据不是有效的JSON格式")
+                return
+                
+            # 创建备份
+            backup_path = DATA_FILE.with_suffix('.json.bak')
+            if DATA_FILE.exists():
+                import shutil
+                shutil.copy2(DATA_FILE, backup_path)
+            
+            # 保存新文件
+            with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                f.write(response.text)
+            
+            # 重新加载数据
+            global data
+            data = load_activity_data()
+            
+            if data:
+                await session.send("✅ 半月刊数据更新成功！\n"
+                                 f"已加载 {len(data)} 条活动数据\n"
+                                 "可以使用【半月刊】命令查看最新内容")
+            else:
+                # 恢复备份
+                if backup_path.exists():
+                    shutil.copy2(backup_path, DATA_FILE)
+                    data = load_activity_data()
+                await session.send("⚠️ 数据更新完成，但加载失败，已恢复备份")
+                
+        except requests.exceptions.RequestException as e:
+            await session.send(f"❌ 下载数据失败: {str(e)}")
+            if 'message_id' in locals():
+                await session.bot.delete_msg(message_id=msg_id)
+            return
+            
+    except Exception as e:
+        sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
+        await session.send(f"❌ 更新过程中发生错误: {str(e)}")
+    finally:
+        if 'message_id' in locals():
+            try:
+                await session.bot.delete_msg(message_id=msg_id)
+            except:
+                pass
 
 # 活动分类颜色
 category_colors = {
