@@ -19,12 +19,10 @@ from hoshino import R, Service, priv, util
 from hoshino.typing import CQEvent
 
 sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_='''
-【半月刊】：完整图片版\n
-【日常活动|日历|日程】：显示进行中的活动和明天开始的活动\n
-【剧情活动|角色活动|活动】：只显示角色剧情活动\n
-【up卡池|up|卡池】：显示当前卡池跟未来卡池\n
-【sp】：活动sp
-【千里眼】：国服千里眼
+【半月刊】：完整图片版
+【日常活动|日历|日程】：显示进行中的活动和明天开始的活动
+【剧情活动|角色活动|活动】：只显示角色剧情活动
+【up卡池|up|卡池】：显示当前卡池跟未来卡池
 【免费十连】 - 免费十连活动
 【公会战】- 公会战信息
 【露娜塔】 - 露娜塔信息
