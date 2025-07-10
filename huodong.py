@@ -32,6 +32,7 @@ sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_
 【斗技场】 - 斗技场信息
 【庆典活动】 - 庆典和双倍活动
 【sp地下城】 - sp地下城
+【更新半月刊】
 '''.strip())
 
 # 获取 data.json 的绝对路径
@@ -69,68 +70,114 @@ if not data:
 else:
     sv.logger.info(f"📊 已加载 {len(data)} 条活动数据")
 
+# 在文件顶部添加
+last_data_hash = None  # 存储上次数据的哈希值
+
+# 计算数据哈希的函数
+def calculate_data_hash(data):
+    import hashlib
+    data_str = json.dumps(data, sort_keys=True)
+    return hashlib.md5(data_str.encode('utf-8')).hexdigest()
+
+# 修改更新函数，返回是否有更新
+async def update_half_monthly_data():
+    global data, last_data_hash
+    
+    try:
+        github_url = "https://raw.githubusercontent.com/duoshoumiao/PCR--Fortnightly-magazine-/main/data.json"
+        response = requests.get(github_url, timeout=15)
+        response.raise_for_status()
+        
+        # 验证JSON格式
+        try:
+            new_data = json.loads(response.text)
+        except json.JSONDecodeError:
+            sv.logger.error("下载的数据不是有效的JSON格式")
+            return False
+            
+        # 计算新数据的哈希
+        new_hash = calculate_data_hash(new_data)
+        
+        # 如果没有变化
+        if new_hash == last_data_hash:
+            sv.logger.info("数据无变化，无需更新")
+            return False
+            
+        # 创建备份
+        backup_path = DATA_FILE.with_suffix('.json.bak')
+        if DATA_FILE.exists():
+            import shutil
+            shutil.copy2(DATA_FILE, backup_path)
+        
+        # 保存新文件
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+        
+        # 更新全局变量
+        data = new_data
+        last_data_hash = new_hash
+        
+        sv.logger.info(f"✅ 半月刊数据更新成功！已加载 {len(data)} 条活动数据")
+        return True
+        
+    except Exception as e:
+        sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
+        return False
+
+# 每小时检查更新的定时任务
+@scheduler.scheduled_job('cron', hour='*')
+async def auto_update_half_monthly():
+    bot = get_bot()
+    try:
+        # 首次运行初始化哈希值
+        global last_data_hash
+        if last_data_hash is None and data:
+            last_data_hash = calculate_data_hash(data)
+        
+        sv.logger.info("⏳ 开始自动检查半月刊更新...")
+        has_update = await update_half_monthly_data()
+        
+        if has_update:
+            sv.logger.info("🔔 检测到半月刊数据有更新，准备发送提醒...")
+            
+            # 获取所有群列表并发送消息
+            gl = await bot.get_group_list()
+            for g in gl:
+                group_id = g['group_id']
+                await bot.send_group_msg(
+                    group_id=group_id,
+                    message="🔔 半月刊数据已更新！\n可使用【半月刊】命令查看最新内容"
+                )
+        else:
+            sv.logger.info("🔄 半月刊数据无更新")
+            
+    except Exception as e:
+        sv.logger.error(f"自动更新半月刊时出错: {str(e)}")
+
+# 修改原有的更新命令
 @sv.on_command('更新半月刊', aliases=('更新数据', '刷新半月刊'))
 async def update_half_monthly(session):
     try:
-        # 检查权限
         if not priv.check_priv(session.event, priv.ADMIN):
             await session.send("⚠️ 需要管理员权限才能更新数据")
             return
 
-        # 发送等待消息
-        msg_id = (await session.send("⏳ 正在更新半月刊数据，请稍候..."))['message_id']
+        msg_id = (await session.send("⏳⏳⏳ 正在更新半月刊数据，请稍候..."))['message_id']
         
-        # GitHub raw文件URL
-        github_url = "https://raw.githubusercontent.com/duoshoumiao/PCR--Fortnightly-magazine-/main/data.json"
+        has_update = await update_half_monthly_data()
         
-        # 下载文件
-        try:
-            response = requests.get(github_url, timeout=15)
-            response.raise_for_status()
-            
-            # 验证JSON格式
-            try:
-                json.loads(response.text)
-            except json.JSONDecodeError:
-                await session.send("❌ 下载的数据不是有效的JSON格式")
-                return
-                
-            # 创建备份
-            backup_path = DATA_FILE.with_suffix('.json.bak')
-            if DATA_FILE.exists():
-                import shutil
-                shutil.copy2(DATA_FILE, backup_path)
-            
-            # 保存新文件
-            with open(DATA_FILE, 'w', encoding='utf-8') as f:
-                f.write(response.text)
-            
-            # 重新加载数据
-            global data
-            data = load_activity_data()
-            
-            if data:
-                await session.send("✅ 半月刊数据更新成功！\n"
-                                 f"已加载 {len(data)} 条活动数据\n"
-                                 "可以使用【半月刊】命令查看最新内容")
-            else:
-                # 恢复备份
-                if backup_path.exists():
-                    shutil.copy2(backup_path, DATA_FILE)
-                    data = load_activity_data()
-                await session.send("⚠️ 数据更新完成，但加载失败，已恢复备份")
-                
-        except requests.exceptions.RequestException as e:
-            await session.send(f"❌ 下载数据失败: {str(e)}")
-            if 'message_id' in locals():
-                await session.bot.delete_msg(message_id=msg_id)
-            return
+        if has_update:
+            await session.send("✅ 半月刊数据更新成功！\n"
+                             f"已加载 {len(data)} 条活动数据\n"
+                             "可以使用【半月刊】命令查看最新内容")
+        else:
+            await session.send("🔄 半月刊数据已是最新版本，无需更新")
             
     except Exception as e:
         sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
-        await session.send(f"❌ 更新过程中发生错误: {str(e)}")
+        await session.send(f"❌❌ 更新过程中发生错误: {str(e)}")
     finally:
-        if 'message_id' in locals():
+        if 'msg_id' in locals():
             try:
                 await session.bot.delete_msg(message_id=msg_id)
             except:
