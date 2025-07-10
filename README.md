@@ -4,7 +4,7 @@ hoshino v1 插件
 
 不需要自动给全群发送日历的需要自己注释掉
 
-自主更改283行背景文件夹路径即可
+自主更改bg_dir = "C:/Resources/img/benzi/"行背景文件夹路径即可
 
 【更新半月刊】更新半月刊，服务器记得开放端口HTTPS（443）
 
@@ -31,3 +31,5 @@ hoshino v1 插件
 【sp地下城】 - sp地下城
 
 ![c8b59b7cc6c2574436783395cb1ea7d9](https://github.com/user-attachments/assets/85154f81-9a71-424f-b754-9b614ed012c1)
+
+2025/07/10 更新自动更新
