@@ -19,10 +19,12 @@ from hoshino import R, Service, priv, util
 from hoshino.typing import CQEvent
 
 sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_='''
-【半月刊】：完整图片版
-【日常活动|日历|日程】：显示进行中的活动和明天开始的活动
-【剧情活动|角色活动|活动】：只显示角色剧情活动
-【up卡池|up|卡池】：显示当前卡池跟未来卡池
+【半月刊】：完整图片版\n
+【日常活动|日历|日程】：显示进行中的活动和明天开始的活动\n
+【剧情活动|角色活动|活动】：只显示角色剧情活动\n
+【up卡池|up|卡池】：显示当前卡池跟未来卡池\n
+【sp】：活动sp
+【千里眼】：国服千里眼
 【免费十连】 - 免费十连活动
 【公会战】- 公会战信息
 【露娜塔】 - 露娜塔信息
@@ -122,32 +124,22 @@ async def update_half_monthly_data():
         sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
         return False
 
-# 每小时检查更新的定时任务
+# 每小时检查更新的定时任务（不发送通知）
 @scheduler.scheduled_job('cron', hour='*')
 async def auto_update_half_monthly():
-    bot = get_bot()
     try:
         # 首次运行初始化哈希值
         global last_data_hash
         if last_data_hash is None and data:
             last_data_hash = calculate_data_hash(data)
         
-        sv.logger.info("⏳ 开始自动检查半月刊更新...")
+        sv.logger.info("⏳⏳⏳ 开始自动检查半月刊更新...")
         has_update = await update_half_monthly_data()
         
         if has_update:
-            sv.logger.info("🔔 检测到半月刊数据有更新，准备发送提醒...")
-            
-            # 获取所有群列表并发送消息
-            gl = await bot.get_group_list()
-            for g in gl:
-                group_id = g['group_id']
-                await bot.send_group_msg(
-                    group_id=group_id,
-                    message="🔔 半月刊数据已更新！\n可使用【半月刊】命令查看最新内容"
-                )
+            sv.logger.info("🔔🔔 检测到半月刊数据有更新")
         else:
-            sv.logger.info("🔄 半月刊数据无更新")
+            sv.logger.info("🔄🔄 半月刊数据无更新")
             
     except Exception as e:
         sv.logger.error(f"自动更新半月刊时出错: {str(e)}")
