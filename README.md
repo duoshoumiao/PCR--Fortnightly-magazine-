@@ -33,3 +33,5 @@ hoshino v1 插件
 ![c8b59b7cc6c2574436783395cb1ea7d9](https://github.com/user-attachments/assets/85154f81-9a71-424f-b754-9b614ed012c1)
 
 2025/07/10 更新自动更新
+
+2025/07/11 删除自动更新后的提醒
