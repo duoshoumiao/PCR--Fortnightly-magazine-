@@ -109,92 +109,17 @@ async def disable_daily_push(session):
 async def daily_calendar_push():
     """每日5:30自动推送"""
     bot = get_bot()
-    current_time = time.time()
     enabled_groups = PushConfig.get_all_enabled()
     
     if not enabled_groups:
         sv.logger.info("当前没有群组开启每日推送")
         return
     
-    # 准备时间范围
-    tz = pytz.timezone('Asia/Shanghai')
-    now = datetime.now(tz)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    today_end = today_start + 86400
-    tomorrow_start = today_start + 86400
-    
-    # 加载活动数据
     try:
-        with open(Path(__file__).parent / "data.json", 'r', encoding='utf-8') as f:
-            activities = json.load(f)
-    except Exception as e:
-        sv.logger.error(f"加载活动数据失败: {e}")
-        return
-
-    # 生成推送内容
-    msg_parts = ["【今日活动日历】"]
-    
-    # 当前进行中的活动
-    current_acts = []
-    for act in activities:
-        try:
-            start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H").timestamp()
-            end = datetime.strptime(act['结束时间'], "%Y/%m/%d %H").timestamp()
-            
-            if start <= current_time <= end:
-                for sub in re.findall(r'【(.*?)】', act['活动名']):
-                    status = format_time_status(start, end, current_time)
-                    current_acts.append(f"{status}\n【{sub}】")
-        except Exception as e:
-            sv.logger.error(f"处理活动数据出错: {e}")
-            continue
-    
-    if current_acts:
-        msg_parts.append("\n".join(current_acts))
-    else:
-        msg_parts.append("今日没有进行中的活动")
-    
-    # 今日即将开始的活动
-    upcoming_acts = []
-    for act in activities:
-        try:
-            start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H").timestamp()
-            if today_start <= start <= today_end and start > current_time:
-                for sub in re.findall(r'【(.*?)】', act['活动名']):
-                    start_time = datetime.fromtimestamp(start)
-                    left = start - current_time
-                    hours = int(left // 3600)
-                    mins = int((left % 3600) // 60)
-                    upcoming_acts.append(
-                        f"今日{start_time.hour}:{start_time.minute:02d}开始 "
-                        f"(剩余{hours}小时{mins}分钟)\n【{sub}】"
-                    )
-        except Exception as e:
-            sv.logger.error(f"处理活动数据出错: {e}")
-            continue
-    
-    if upcoming_acts:
-        msg_parts.append("\n今日即将开始：\n" + "\n".join(upcoming_acts))
-    
-    # 明日开始的活动
-    tomorrow_acts = []
-    for act in activities:
-        try:
-            start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H").timestamp()
-            if tomorrow_start <= start < tomorrow_start + 86400:
-                for sub in re.findall(r'【(.*?)】', act['活动名']):
-                    start_time = datetime.fromtimestamp(start)
-                    tomorrow_acts.append(f"明日{start_time.hour}点开始\n【{sub}】")
-        except Exception as e:
-            sv.logger.error(f"处理活动数据出错: {e}")
-            continue
-    
-    if tomorrow_acts:
-        msg_parts.append("\n明日开始：\n" + "\n".join(tomorrow_acts))
-    
-    # 生成图片
-    try:
-        img = generate_calendar_image("\n".join(msg_parts))
+        # 获取日常活动文本内容
+        msg = await get_daily_activity_text()
+        # 生成图片
+        img = await draw_text_image("每日活动推送", msg)
         img_b64 = base64.b64encode(img.getvalue()).decode()
         
         for group_id in enabled_groups:
@@ -209,63 +134,126 @@ async def daily_calendar_push():
     except Exception as e:
         sv.logger.error(f"生成推送图片失败: {e}")
 
+async def get_daily_activity_text():
+    """获取日常活动文本内容"""
+    current_time = time.time()
+    msg = '当前进行中的日常活动：\n'
+    has_current_activity = False
+    
+    for activity in data:
+        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
+        end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
+        
+        if start_time <= current_time <= end_time:
+            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
+            for sub in sub_activities:
+                time_status = format_activity_status(start_time, end_time, current_time)
+                msg += f'\n[{time_status}] \n【{sub}】\n'
+                has_current_activity = True
+    
+    if not has_current_activity:
+        msg += '当前没有进行中的日常活动\n'
+    
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    today_end = today_start + 86400
+    
+    has_today_upcoming = False
+    today_upcoming_msg = ''
+    for activity in data:
+        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
+        
+        if today_start <= start_time <= today_end and start_time > current_time:
+            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
+            for sub in sub_activities:
+                start_datetime = datetime.fromtimestamp(start_time)
+                start_hour = start_datetime.hour
+                start_minute = start_datetime.minute
+                time_left = start_time - current_time
+                hours_left = int(time_left // 3600)
+                minutes_left = int((time_left % 3600) // 60)
+                today_upcoming_msg += f'\n[今日{start_hour}:{start_minute:02d}开始] (还有{hours_left}小时{minutes_left}分钟)\n【{sub}】\n'
+                has_today_upcoming = True
+    
+    if has_today_upcoming:
+        msg += '\n今日即将开始的活动：' + today_upcoming_msg
+    
+    tomorrow_start = today_start + 86400
+    tomorrow_end = tomorrow_start + 86400
+    
+    has_tomorrow_activity = False
+    tomorrow_msg = ''
+    for activity in data:
+        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
+        
+        if tomorrow_start <= start_time <= tomorrow_end:
+            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
+            for sub in sub_activities:
+                start_hour = datetime.fromtimestamp(start_time).hour
+                tomorrow_msg += f'\n[明日{start_hour}点开始] \n【{sub}】\n'
+                has_tomorrow_activity = True
+    
+    if has_tomorrow_activity:
+        msg += '\n明日开始的活动：' + tomorrow_msg
+    
+    return msg
+
 # ========== 工具函数 ==========
-def format_time_status(start, end, now):
-    """格式化时间状态"""
-    if now < start:
-        delta = start - now
-        return f"🕒 开始倒计时: {format_timedelta(delta)}"
+def format_activity_status(start_time, end_time, current_time):
+    """格式化活动状态"""
+    duration = end_time - start_time
+    duration_days = duration // (24 * 3600)
+    duration_hours = (duration % (24 * 3600)) // 3600
+    duration_str = f'{duration_days}天{duration_hours}小时' if duration_hours > 0 else f'{duration_days}天'
+    
+    if current_time < start_time:
+        delta = start_time - current_time
+        time_str = format_countdown(delta, is_future=True)
+        return f'开始倒计时: {time_str}（持续{duration_str}）'
     else:
-        delta = end - now
-        return f"⏳ 剩余时间: {format_timedelta(delta)}"
+        delta = end_time - current_time
+        if delta > 0:
+            time_str = format_countdown(delta, is_future=False)
+            return f'剩余时间: {time_str}'
+        else:
+            return f'已结束（持续{duration_str}）'
 
-def format_timedelta(seconds):
-    """格式化时间差"""
-    days, rem = divmod(seconds, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins = int(rem // 60)
-    parts = []
-    if days > 0:
-        parts.append(f"{int(days)}天")
-    if hours > 0:
-        parts.append(f"{int(hours)}小时")
-    if mins > 0:
-        parts.append(f"{mins}分钟")
-    return "".join(parts) or "不足1分钟"
-
-def generate_calendar_image(text):
-    """生成日历图片"""
-    # 图片尺寸
-    img_width = 800
-    line_height = 30
-    padding = 40
+def format_countdown(seconds, is_future=True):
+    """格式化倒计时"""
+    total_seconds = seconds
+    total_hours = total_seconds // 3600
     
-    # 计算高度
-    lines = text.split('\n')
-    img_height = padding * 2 + len(lines) * line_height
-    
-    # 创建图片
-    img = Image.new('RGB', (img_width, img_height), (245, 245, 245))
-    draw = ImageDraw.Draw(img)
-    
-    # 加载字体
-    try:
-        font = ImageFont.truetype("msyh.ttc", 24)
-    except:
-        font = ImageFont.load_default()
-    
-    # 绘制文本
-    y = padding
-    for line in lines:
-        draw.text((padding, y), line, fill=(0, 0, 0), font=font)
-        y += line_height
-    
-    # 保存为BytesIO
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    return buf
-
+    if total_hours >= 48:
+        days = total_hours // 24
+        remaining_seconds = total_seconds % (24 * 3600)
+        hours = remaining_seconds // 3600
+        remaining_seconds %= 3600
+        minutes = remaining_seconds // 60
+        return (
+            f'{int(days)}天{int(hours)}时{int(minutes)}分' if is_future
+            else f'{int(days)}天{int(hours)}时{int(minutes)}分'
+        )
+    else:
+        hours = total_hours
+        remaining_seconds = total_seconds % 3600
+        minutes = remaining_seconds // 60
+        
+        if hours >= 24:
+            days = hours // 24
+            remaining_hours = hours % 24
+            return (
+                f'{int(days)}天{int(remaining_hours)}时{int(minutes)}分' if is_future
+                else f'{int(days)}天{int(remaining_hours)}时{int(minutes)}分'
+            )
+        elif hours > 0:
+            return (
+                f'{int(hours)}时{int(minutes)}分' if is_future
+                else f'{int(hours)}时{int(minutes)}分'
+            )
+        else:
+            return (
+                f'{int(minutes)}分' if is_future
+                else f'{int(minutes)}分'
+            )
 
 # 获取 data.json 的绝对路径
 DATA_FILE = Path(__file__).parent / "data.json"
@@ -273,12 +261,12 @@ DATA_FILE = Path(__file__).parent / "data.json"
 def load_activity_data():
     # 检查文件是否存在
     if not DATA_FILE.exists():
-        sv.logger.error(f"❌ data.json 文件不存在！路径：{DATA_FILE}")
+        sv.logger.error(f"❌❌ data.json 文件不存在！路径：{DATA_FILE}")
         return []
 
     # 检查文件是否可读
     if not os.access(DATA_FILE, os.R_OK):
-        sv.logger.error(f"❌ data.json 不可读！请检查权限。")
+        sv.logger.error(f"❌❌ data.json 不可读！请检查权限。")
         return []
 
     # 尝试读取 JSON
@@ -288,10 +276,10 @@ def load_activity_data():
             sv.logger.info("✅ 成功加载 data.json")
             return data
     except json.JSONDecodeError as e:
-        sv.logger.error(f"❌ data.json 格式错误: {e}")
+        sv.logger.error(f"❌❌ data.json 格式错误: {e}")
         return []
     except Exception as e:
-        sv.logger.error(f"❌ 无法读取 data.json: {e}")
+        sv.logger.error(f"❌❌ 无法读取 data.json: {e}")
         return []
 
 # 加载数据
@@ -300,7 +288,7 @@ data = load_activity_data()
 if not data:
     sv.logger.error("⚠️ 活动数据为空，请检查 data.json！")
 else:
-    sv.logger.info(f"📊 已加载 {len(data)} 条活动数据")
+    sv.logger.info(f"📊📊 已加载 {len(data)} 条活动数据")
 
 # 在文件顶部添加
 last_data_hash = None  # 存储上次数据的哈希值
@@ -365,13 +353,13 @@ async def auto_update_half_monthly():
         if last_data_hash is None and data:
             last_data_hash = calculate_data_hash(data)
         
-        sv.logger.info("⏳⏳⏳ 开始自动检查半月刊更新...")
+        sv.logger.info("⏳⏳⏳⏳⏳⏳⏳⏳⏳ 开始自动检查半月刊更新...")
         has_update = await update_half_monthly_data()
         
         if has_update:
-            sv.logger.info("🔔🔔 检测到半月刊数据有更新")
+            sv.logger.info("🔔🔔🔔🔔 检测到半月刊数据有更新")
         else:
-            sv.logger.info("🔄🔄 半月刊数据无更新")
+            sv.logger.info("🔄🔄🔄🔄 半月刊数据无更新")
             
     except Exception as e:
         sv.logger.error(f"自动更新半月刊时出错: {str(e)}")
@@ -384,7 +372,7 @@ async def update_half_monthly(session):
             await session.send("⚠️ 需要管理员权限才能更新数据")
             return
 
-        msg_id = (await session.send("⏳⏳⏳ 正在更新半月刊数据，请稍候..."))['message_id']
+        msg_id = (await session.send("⏳⏳⏳⏳⏳⏳⏳⏳⏳ 正在更新半月刊数据，请稍候..."))['message_id']
         
         has_update = await update_half_monthly_data()
         
@@ -393,11 +381,11 @@ async def update_half_monthly(session):
                              f"已加载 {len(data)} 条活动数据\n"
                              "可以使用【半月刊】命令查看最新内容")
         else:
-            await session.send("🔄 半月刊数据已是最新版本，无需更新")
+            await session.send("🔄🔄 半月刊数据已是最新版本，无需更新")
             
     except Exception as e:
         sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
-        await session.send(f"❌❌ 更新过程中发生错误: {str(e)}")
+        await session.send(f"❌❌❌❌ 更新过程中发生错误: {str(e)}")
     finally:
         if 'msg_id' in locals():
             try:
@@ -441,63 +429,6 @@ def classify_activity(activity_name):
         return "斗技场"
     else:
         return "其他活动"
-
-# 格式化活动状态
-def format_activity_status(start_time, end_time, current_time):
-    duration = end_time - start_time
-    duration_days = duration // (24 * 3600)
-    duration_hours = (duration % (24 * 3600)) // 3600
-    duration_str = f'{duration_days}天{duration_hours}小时' if duration_hours > 0 else f'{duration_days}天'
-    
-    if current_time < start_time:
-        delta = start_time - current_time
-        time_str = format_countdown(delta, is_future=True)
-        return f'开始倒计时: {time_str}（持续{duration_str}）'
-    else:
-        delta = end_time - current_time
-        if delta > 0:
-            time_str = format_countdown(delta, is_future=False)
-            return f'剩余时间: {time_str}'
-        else:
-            return f'已结束（持续{duration_str}）'
-
-# 格式化倒计时
-def format_countdown(seconds, is_future=True):
-    total_seconds = seconds
-    total_hours = total_seconds // 3600
-    
-    if total_hours >= 48:
-        days = total_hours // 24
-        remaining_seconds = total_seconds % (24 * 3600)
-        hours = remaining_seconds // 3600
-        remaining_seconds %= 3600
-        minutes = remaining_seconds // 60
-        return (
-            f'{int(days)}天{int(hours)}时{int(minutes)}分' if is_future
-            else f'{int(days)}天{int(hours)}时{int(minutes)}分'
-        )
-    else:
-        hours = total_hours
-        remaining_seconds = total_seconds % 3600
-        minutes = remaining_seconds // 60
-        
-        if hours >= 24:
-            days = hours // 24
-            remaining_hours = hours % 24
-            return (
-                f'{int(days)}天{int(remaining_hours)}时{int(minutes)}分' if is_future
-                else f'{int(days)}天{int(remaining_hours)}时{int(minutes)}分'
-            )
-        elif hours > 0:
-            return (
-                f'{int(hours)}时{int(minutes)}分' if is_future
-                else f'{int(hours)}时{int(minutes)}分'
-            )
-        else:
-            return (
-                f'{int(minutes)}分' if is_future
-                else f'{int(minutes)}分'
-            )
 
 # 绘制半月刊图片
 async def draw_half_monthly_report():
@@ -738,8 +669,11 @@ async def draw_text_image(title, text):
         font_content = ImageFont.load_default()
     
     # 绘制标题
-    title_width = draw.textlength(title, font=font_title)
-    draw.text(((img_width - title_width) // 2, 30), title, fill=(0, 0, 0), font=font_title)
+    try:
+        title_width = draw.textlength(title, font=font_title)
+        draw.text(((img_width - title_width) // 2, 30), title, fill=(0, 0, 0), font=font_title)
+    except:
+        draw.text((50, 30), title, fill=(0, 0, 0))
     
     # 绘制分割线
     draw.line([(50, 80), (img_width - 50, 80)], fill=(200, 200, 200), width=2)
@@ -765,7 +699,7 @@ async def draw_text_image(title, text):
     
     return img_byte_arr
 
- 
+# 日常活动/日历功能
 @sv.on_command('日常活动', aliases=('日历', '日程'))
 async def daily_activity(session):
     current_time = time.time()
@@ -830,6 +764,7 @@ async def daily_activity(session):
     img = await draw_text_image("日常活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 剧情活动功能
 @sv.on_command('剧情活动', aliases=('角色活动', '活动'))
 async def story_activity(session):
     current_time = time.time()
@@ -851,6 +786,7 @@ async def story_activity(session):
     img = await draw_text_image("剧情活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# UP卡池功能
 @sv.on_command('up卡池', aliases=('up', '卡池'))
 async def up_gacha(session):
     current_time = time.time()
@@ -872,6 +808,7 @@ async def up_gacha(session):
     img = await draw_text_image("UP卡池", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 免费十连功能
 @sv.on_command('免费十连')
 async def free_gacha(session):
     current_time = time.time()
@@ -890,6 +827,7 @@ async def free_gacha(session):
     img = await draw_text_image("免费十连", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 公会战功能
 @sv.on_command('公会战')
 async def clan_battle(session):
     current_time = time.time()
@@ -908,6 +846,7 @@ async def clan_battle(session):
     img = await draw_text_image("公会战", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 露娜塔功能
 @sv.on_command('露娜塔')
 async def luna_tower(session):
     current_time = time.time()
@@ -926,6 +865,7 @@ async def luna_tower(session):
     img = await draw_text_image("露娜塔", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 新开专武功能
 @sv.on_command('新开专')
 async def new_unique(session):
     current_time = time.time()
@@ -944,6 +884,7 @@ async def new_unique(session):
     img = await draw_text_image("新开专武", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 斗技场功能
 @sv.on_command('斗技场')
 async def arena(session):
     current_time = time.time()
@@ -962,6 +903,7 @@ async def arena(session):
     img = await draw_text_image("斗技场", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 庆典活动功能
 @sv.on_command('庆典活动', aliases=('庆典'))
 async def campaign(session):
     current_time = time.time()
@@ -980,6 +922,7 @@ async def campaign(session):
     img = await draw_text_image("庆典活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
+# 地下城功能
 @sv.on_command('地下城', aliases=('sp地下城', '地下城活动'))
 async def dungeon(session):
     current_time = time.time()
@@ -996,4 +939,5 @@ async def dungeon(session):
     
     msg = msg if len(msg) > len('地下城活动：\n') else msg + '当前没有地下城活动'
     img = await draw_text_image("地下城活动", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")    
+    
