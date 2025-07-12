@@ -32,6 +32,8 @@ sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_
 【斗技场】 - 斗技场信息
 【庆典活动】 - 庆典和双倍活动
 【sp地下城】 - sp地下城
+【开启每日推送】 - 开启每日5:30的活动推送
+【关闭每日推送】 - 关闭每日推送
 【更新半月刊】
 '''.strip())
 
@@ -533,9 +535,36 @@ async def draw_text_image(title, text):
     
     return img_byte_arr
 
-# 每日5:30自动发送日历
+# 添加一个全局变量来存储推送状态
+daily_push_enabled = False
+
+# 添加开启/关闭推送的命令
+@sv.on_command('开启每日推送')
+async def enable_daily_push(session):
+    global daily_push_enabled
+    if not priv.check_priv(session.event, priv.ADMIN):
+        await session.send("⚠️ 需要管理员权限才能开启每日推送")
+        return
+    
+    daily_push_enabled = True
+    await session.send("✅ 已开启每日5:30的活动推送")
+
+@sv.on_command('关闭每日推送')
+async def disable_daily_push(session):
+    global daily_push_enabled
+    if not priv.check_priv(session.event, priv.ADMIN):
+        await session.send("⚠️ 需要管理员权限才能关闭每日推送")
+        return
+    
+    daily_push_enabled = False
+    await session.send("✅ 已关闭每日活动推送")
+
+# 修改定时任务，检查推送状态
 @scheduler.scheduled_job('cron', hour=5, minute=30)
 async def daily_calendar():
+    if not daily_push_enabled:
+        return
+    
     bot = get_bot()
     current_time = time.time()
     msg = '今日活动日历：\n'
