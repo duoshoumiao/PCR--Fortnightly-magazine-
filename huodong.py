@@ -8,6 +8,7 @@ import random
 import base64
 from PIL import Image, ImageDraw, ImageFont
 import io
+from io import BytesIO  
 import json
 from pathlib import Path
 from nonebot import on_command, get_bot
@@ -34,6 +35,237 @@ sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_
 【关闭每日推送】 - 关闭每日推送
 【更新半月刊】
 '''.strip())
+ 
+
+# ========== 配置文件管理 ==========
+PUSH_CONFIG_PATH = Path(__file__).parent / "push_config.json"
+
+class PushConfig:
+    @staticmethod
+    def load():
+        """加载推送配置"""
+        try:
+            if PUSH_CONFIG_PATH.exists():
+                with open(PUSH_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            sv.logger.error(f"加载推送配置失败: {e}")
+            return {}
+
+    @staticmethod
+    def save(config):
+        """保存推送配置"""
+        try:
+            with open(PUSH_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            sv.logger.error(f"保存推送配置失败: {e}")
+
+    @staticmethod
+    def set_group(group_id, enabled):
+        """设置群组推送状态"""
+        config = PushConfig.load()
+        config[str(group_id)] = enabled
+        PushConfig.save(config)
+
+    @staticmethod
+    def get_group(group_id):
+        """获取群组推送状态"""
+        config = PushConfig.load()
+        return config.get(str(group_id), False)
+
+    @staticmethod
+    def get_all_enabled():
+        """获取所有开启推送的群"""
+        config = PushConfig.load()
+        return [int(gid) for gid, enabled in config.items() if enabled]
+
+# ========== 命令处理 ==========
+@sv.on_command('开启每日推送')
+async def enable_daily_push(session):
+    """开启本群每日推送"""
+    if not priv.check_priv(session.event, priv.ADMIN):
+        await session.send("⚠️ 需要管理员权限")
+        return
+    
+    group_id = session.event.group_id
+    PushConfig.set_group(group_id, True)
+    await session.send("✅ 已开启本群每日5:30的活动推送")
+
+@sv.on_command('关闭每日推送')
+async def disable_daily_push(session):
+    """关闭本群每日推送"""
+    if not priv.check_priv(session.event, priv.ADMIN):
+        await session.send("⚠️ 需要管理员权限")
+        return
+    
+    group_id = session.event.group_id
+    PushConfig.set_group(group_id, False)
+    await session.send("✅ 已关闭本群每日活动推送")
+
+# ========== 定时推送任务 ==========
+@scheduler.scheduled_job('cron', hour=5, minute=30)
+async def daily_calendar_push():
+    """每日5:30自动推送"""
+    bot = get_bot()
+    current_time = time.time()
+    enabled_groups = PushConfig.get_all_enabled()
+    
+    if not enabled_groups:
+        sv.logger.info("当前没有群组开启每日推送")
+        return
+    
+    # 准备时间范围
+    tz = pytz.timezone('Asia/Shanghai')
+    now = datetime.now(tz)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    today_end = today_start + 86400
+    tomorrow_start = today_start + 86400
+    
+    # 加载活动数据
+    try:
+        with open(Path(__file__).parent / "data.json", 'r', encoding='utf-8') as f:
+            activities = json.load(f)
+    except Exception as e:
+        sv.logger.error(f"加载活动数据失败: {e}")
+        return
+
+    # 生成推送内容
+    msg_parts = ["【今日活动日历】"]
+    
+    # 当前进行中的活动
+    current_acts = []
+    for act in activities:
+        try:
+            start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H").timestamp()
+            end = datetime.strptime(act['结束时间'], "%Y/%m/%d %H").timestamp()
+            
+            if start <= current_time <= end:
+                for sub in re.findall(r'【(.*?)】', act['活动名']):
+                    status = format_time_status(start, end, current_time)
+                    current_acts.append(f"{status}\n【{sub}】")
+        except Exception as e:
+            sv.logger.error(f"处理活动数据出错: {e}")
+            continue
+    
+    if current_acts:
+        msg_parts.append("\n".join(current_acts))
+    else:
+        msg_parts.append("今日没有进行中的活动")
+    
+    # 今日即将开始的活动
+    upcoming_acts = []
+    for act in activities:
+        try:
+            start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H").timestamp()
+            if today_start <= start <= today_end and start > current_time:
+                for sub in re.findall(r'【(.*?)】', act['活动名']):
+                    start_time = datetime.fromtimestamp(start)
+                    left = start - current_time
+                    hours = int(left // 3600)
+                    mins = int((left % 3600) // 60)
+                    upcoming_acts.append(
+                        f"今日{start_time.hour}:{start_time.minute:02d}开始 "
+                        f"(剩余{hours}小时{mins}分钟)\n【{sub}】"
+                    )
+        except Exception as e:
+            sv.logger.error(f"处理活动数据出错: {e}")
+            continue
+    
+    if upcoming_acts:
+        msg_parts.append("\n今日即将开始：\n" + "\n".join(upcoming_acts))
+    
+    # 明日开始的活动
+    tomorrow_acts = []
+    for act in activities:
+        try:
+            start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H").timestamp()
+            if tomorrow_start <= start < tomorrow_start + 86400:
+                for sub in re.findall(r'【(.*?)】', act['活动名']):
+                    start_time = datetime.fromtimestamp(start)
+                    tomorrow_acts.append(f"明日{start_time.hour}点开始\n【{sub}】")
+        except Exception as e:
+            sv.logger.error(f"处理活动数据出错: {e}")
+            continue
+    
+    if tomorrow_acts:
+        msg_parts.append("\n明日开始：\n" + "\n".join(tomorrow_acts))
+    
+    # 生成图片
+    try:
+        img = generate_calendar_image("\n".join(msg_parts))
+        img_b64 = base64.b64encode(img.getvalue()).decode()
+        
+        for group_id in enabled_groups:
+            try:
+                await bot.send_group_msg(
+                    group_id=group_id,
+                    message=f"[CQ:image,file=base64://{img_b64}]"
+                )
+                sv.logger.info(f"已向群 {group_id} 发送每日推送")
+            except Exception as e:
+                sv.logger.error(f"群 {group_id} 推送失败: {e}")
+    except Exception as e:
+        sv.logger.error(f"生成推送图片失败: {e}")
+
+# ========== 工具函数 ==========
+def format_time_status(start, end, now):
+    """格式化时间状态"""
+    if now < start:
+        delta = start - now
+        return f"🕒 开始倒计时: {format_timedelta(delta)}"
+    else:
+        delta = end - now
+        return f"⏳ 剩余时间: {format_timedelta(delta)}"
+
+def format_timedelta(seconds):
+    """格式化时间差"""
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    mins = int(rem // 60)
+    parts = []
+    if days > 0:
+        parts.append(f"{int(days)}天")
+    if hours > 0:
+        parts.append(f"{int(hours)}小时")
+    if mins > 0:
+        parts.append(f"{mins}分钟")
+    return "".join(parts) or "不足1分钟"
+
+def generate_calendar_image(text):
+    """生成日历图片"""
+    # 图片尺寸
+    img_width = 800
+    line_height = 30
+    padding = 40
+    
+    # 计算高度
+    lines = text.split('\n')
+    img_height = padding * 2 + len(lines) * line_height
+    
+    # 创建图片
+    img = Image.new('RGB', (img_width, img_height), (245, 245, 245))
+    draw = ImageDraw.Draw(img)
+    
+    # 加载字体
+    try:
+        font = ImageFont.truetype("msyh.ttc", 24)
+    except:
+        font = ImageFont.load_default()
+    
+    # 绘制文本
+    y = padding
+    for line in lines:
+        draw.text((padding, y), line, fill=(0, 0, 0), font=font)
+        y += line_height
+    
+    # 保存为BytesIO
+    buf = BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
 
 # 获取 data.json 的绝对路径
 DATA_FILE = Path(__file__).parent / "data.json"
@@ -533,106 +765,7 @@ async def draw_text_image(title, text):
     
     return img_byte_arr
 
-# 添加一个全局变量来存储推送状态
-daily_push_enabled = False
-
-# 添加开启/关闭推送的命令
-@sv.on_command('开启每日推送')
-async def enable_daily_push(session):
-    global daily_push_enabled
-    if not priv.check_priv(session.event, priv.ADMIN):
-        await session.send("⚠️ 需要管理员权限才能开启每日推送")
-        return
-    
-    daily_push_enabled = True
-    await session.send("✅ 已开启每日5:30的活动推送")
-
-@sv.on_command('关闭每日推送')
-async def disable_daily_push(session):
-    global daily_push_enabled
-    if not priv.check_priv(session.event, priv.ADMIN):
-        await session.send("⚠️ 需要管理员权限才能关闭每日推送")
-        return
-    
-    daily_push_enabled = False
-    await session.send("✅ 已关闭每日活动推送")
-
-# 修改定时任务，检查推送状态
-@scheduler.scheduled_job('cron', hour=5, minute=30)
-async def daily_calendar():
-    if not daily_push_enabled:
-        return
-    
-    bot = get_bot()
-    current_time = time.time()
-    msg = '今日活动日历：\n'
-    
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    today_end = today_start + 86400
-    
-    # 检查今日活动
-    has_today_activity = False
-    for activity in data:
-        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
-        end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
-        
-        if start_time <= current_time <= end_time:
-            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
-            for sub in sub_activities:
-                time_status = format_activity_status(start_time, end_time, current_time)
-                msg += f'\n[{time_status}] \n【{sub}】\n'
-                has_today_activity = True
-    
-    if not has_today_activity:
-        msg += '今日没有进行中的活动\n'
-    
-    # 检查今日即将开始的活动
-    has_today_upcoming = False
-    today_upcoming_msg = ''
-    for activity in data:
-        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
-        
-        if today_start <= start_time <= today_end and start_time > current_time:
-            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
-            for sub in sub_activities:
-                start_datetime = datetime.fromtimestamp(start_time)
-                start_hour = start_datetime.hour
-                start_minute = start_datetime.minute
-                time_left = start_time - current_time
-                hours_left = int(time_left // 3600)
-                minutes_left = int((time_left % 3600) // 60)
-                today_upcoming_msg += f'\n[今日{start_hour}:{start_minute:02d}开始] (还有{hours_left}小时{minutes_left}分钟)\n【{sub}】\n'
-                has_today_upcoming = True
-    
-    if has_today_upcoming:
-        msg += '\n今日即将开始的活动：' + today_upcoming_msg
-    
-    # 检查明天开始的活动
-    tomorrow_start = today_start + 86400
-    tomorrow_end = tomorrow_start + 86400
-    
-    has_tomorrow_activity = False
-    tomorrow_msg = ''
-    for activity in data:
-        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
-        
-        if tomorrow_start <= start_time <= tomorrow_end:
-            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
-            for sub in sub_activities:
-                start_hour = datetime.fromtimestamp(start_time).hour
-                tomorrow_msg += f'\n[明日{start_hour}点开始] \n【{sub}】\n'
-                has_tomorrow_activity = True
-    
-    if has_tomorrow_activity:
-        msg += '\n明日开始的活动：' + tomorrow_msg
-    
-    # 获取所有群列表并发送消息
-    gl = await bot.get_group_list()
-    for g in gl:
-        group_id = g['group_id']
-        img = await draw_text_image("今日活动日历", msg)
-        await bot.send_group_msg(group_id=group_id, message=f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
-
+ 
 @sv.on_command('日常活动', aliases=('日历', '日程'))
 async def daily_activity(session):
     current_time = time.time()
