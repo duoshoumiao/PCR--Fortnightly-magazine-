@@ -203,12 +203,22 @@ def format_activity_status(start_time, end_time, current_time):
     duration = end_time - start_time
     duration_days = duration // (24 * 3600)
     duration_hours = (duration % (24 * 3600)) // 3600
-    duration_str = f'{duration_days}天{duration_hours}小时' if duration_hours > 0 else f'{duration_days}天'
+    
+    # 计算持续时间的字符串表示
+    if duration_hours > 0:
+        duration_str = f'{duration_days}天{duration_hours}小时'
+    else:
+        duration_str = f'{duration_days}天'
+    
+    # 获取开始日期的日部分
+    start_date = datetime.fromtimestamp(start_time)
+    start_day = start_date.day
     
     if current_time < start_time:
         delta = start_time - current_time
         time_str = format_countdown(delta, is_future=True)
-        return f'开始倒计时: {time_str}（持续{duration_str}）'
+        # 修改这里：在持续天数前增加开始日期
+        return f'开始倒计时: {time_str}（{start_day}号开始,持续{duration_str}）'
     else:
         delta = end_time - current_time
         if delta > 0:
