@@ -9,6 +9,7 @@ import base64
 from PIL import Image, ImageDraw, ImageFont
 import io
 from io import BytesIO  
+import asyncio  # 添加这行导入
 import json
 from pathlib import Path
 from nonebot import on_command, get_bot
@@ -18,6 +19,7 @@ import requests
 import hoshino
 from hoshino import R, Service, priv, util
 from hoshino.typing import CQEvent
+from hoshino.service import Service as sv  # 关键修复点
 
 sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_='''
 【半月刊】：完整图片版\n
@@ -455,7 +457,7 @@ async def draw_half_monthly_report():
         "斗技场": [],
         "其他活动": []
     }
-    
+
     # 分类活动数据
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
@@ -469,52 +471,44 @@ async def draw_half_monthly_report():
                 classified_activities[category].append(f"{time_status}\n{sub}")
 
     # 图片尺寸
-    img_width = 1400  # 加宽图片以适应双列
+    img_width = 1400
     base_height = 180
-    line_height = 35
+    line_height = 35  # 文本行高
+    icon_size = 60    # 头像尺寸
+    icon_line_height = 40  # 头像行高度
     padding = 50
-    
-    ######################################################
-    # 超8行并列显示的核心判断逻辑开始
-    ######################################################
     
     # 计算总行数
     total_lines = 0
     category_blocks = []
     for category, activities in classified_activities.items():
         if activities:
-            # 每个分类块包含：1行标题 + 每个活动2行(时间+内容) + 1行间距
-            block_lines = 1 + len(activities) * 2 + 1
+            # 每个活动增加1行用于头像显示
+            block_lines = 1 + len(activities) * 3 + 1  # 标题 + (时间+内容+头像) + 间距
             total_lines += block_lines
-            # 计算分类块高度
-            block_height = 50 + (len(activities) * (line_height * 2 + 10))
+            block_height = 50 + (len(activities) * (line_height * 2 + icon_line_height + 15))
             category_blocks.append((category, activities, block_height))
     
-    # 自动切换双列模式（超过8行时启用）
+    # 自动切换双列模式
     use_two_columns = total_lines > 8
-    print(f"调试信息 - 总行数: {total_lines}, 使用双列模式: {use_two_columns}")
+    sv.logger.info(f"调试信息 - 总行数: {total_lines}, 使用双列模式: {use_two_columns}")
 
     # 分配内容到列
-    column_heights = [0, 0]  # 左右两列的高度
-    column_contents = [[], []]  # 左右两列的内容
+    column_heights = [0, 0]
+    column_contents = [[], []]
     
     for block in category_blocks:
         if use_two_columns:
-            # 智能分配到较矮的列
             target_col = 0 if column_heights[0] <= column_heights[1] else 1
             column_contents[target_col].append(block)
-            column_heights[target_col] += block[2] + 20  # 块高度+间距
+            column_heights[target_col] += block[2] + 20
         else:
-            column_contents[0].append(block)  # 单列模式全部放左列
-
-    ######################################################
-    # 超8行并列显示的核心判断逻辑结束
-    ######################################################
+            column_contents[0].append(block)
 
     # 计算总高度
     content_height = max(column_heights) if use_two_columns else sum(block[2] + 20 for block in category_blocks)
     total_height = base_height + content_height + padding * 2
-    total_height = max(600, min(total_height, 3000))  # 限制高度范围
+    total_height = max(600, min(total_height, 3000))
 
     # 创建画布
     try:
@@ -524,36 +518,30 @@ async def draw_half_monthly_report():
             random_bg = random.choice(bg_files)
             bg_img = Image.open(os.path.join(bg_dir, random_bg)).convert('RGBA')
             
-            # 计算填充尺寸（保持宽高比）
             bg_width, bg_height = bg_img.size
             target_ratio = img_width / total_height
             bg_ratio = bg_width / bg_height
             
             if bg_ratio > target_ratio:
-                # 按高度填充
                 new_height = total_height
                 new_width = int(bg_width * (new_height / bg_height))
             else:
-                # 按宽度填充
                 new_width = img_width
                 new_height = int(bg_height * (new_width / bg_width))
             
-            # 调整背景大小
             bg_img = bg_img.resize((new_width, new_height), Image.LANCZOS)
             
-            # 创建画布并居中放置背景
             img = Image.new('RGBA', (img_width, total_height), (0, 0, 0, 0))
             x_offset = (img_width - new_width) // 2
             y_offset = (total_height - new_height) // 2
             img.paste(bg_img, (x_offset, y_offset))
             
-            # 添加半透明遮罩
             overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 180))
             img = Image.alpha_composite(img, overlay)
         else:
             img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
     except Exception as e:
-        print(f"背景加载失败: {e}")
+        sv.logger.error(f"背景加载失败: {e}")
         img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
     
     draw = ImageDraw.Draw(img)
@@ -577,7 +565,7 @@ async def draw_half_monthly_report():
             font_category = ImageFont.truetype(font_path.path, 28) if hasattr(font_path, 'path') else ImageFont.load_default()
             font_content = ImageFont.truetype(font_path.path, 24) if hasattr(font_path, 'path') else ImageFont.load_default()
     except Exception as e:
-        print(f"字体加载失败: {e}")
+        sv.logger.error(f"字体加载失败: {e}")
         font_title = ImageFont.load_default()
         font_category = ImageFont.load_default()
         font_content = ImageFont.load_default()
@@ -606,35 +594,85 @@ async def draw_half_monthly_report():
     y_start = 180
     column_width = img_width // 2 - 70 if use_two_columns else img_width - 100
     
-    def draw_column(x_offset, blocks):
+    async def process_char_ids(text, x, y):
+        """处理文本中的角色ID，返回处理后的文本和头像列表"""
+        char_ids = re.findall(r'\d{4,6}', text)
+        icons = []
+        
+        for char_id in char_ids:
+            try:
+                char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}31.png').path
+                if os.path.exists(char_icon_path):
+                    icon = Image.open(char_icon_path).convert("RGBA")
+                    icon = icon.resize((icon_size, icon_size), Image.LANCZOS)
+                    icons.append((char_id, icon))
+                    text = text.replace(char_id, "")  # 移除数字
+            except Exception as e:
+                sv.logger.error(f"加载角色头像失败: {e}")
+                text = text.replace(char_id, "")  # 即使加载失败也移除数字
+        
+        return text, icons
+    
+    async def draw_column(x_offset, blocks):
+        """异步绘制列内容"""
+        nonlocal img, draw
         y = y_start
+        
         for category, activities, block_height in blocks:
             # 绘制分类标题
             draw.rectangle([(x_offset, y), (x_offset + column_width, y + 40)], 
                          fill=category_colors[category])
             draw.text((x_offset + 20, y + 5), category, fill=(255, 255, 255), font=font_category)
-            
-            # 绘制活动内容
             y += 50
+            
             for activity in activities:
                 lines = activity.split('\n')
-                for i, line in enumerate(lines):
+                icons_list = []  # 存储每行的头像列表
+                
+                # 处理文本并收集头像
+                processed_lines = []
+                for line in lines:
+                    processed_line, icons = await process_char_ids(line, x_offset + 20, y)
+                    processed_lines.append(processed_line)
+                    icons_list.append(icons)
+                
+                # 绘制文本
+                for i, line in enumerate(processed_lines):
                     if line.strip():
                         color = (255, 150, 50) if i == 0 and '开始倒计时' in line else (
                                 50, 200, 50) if i == 0 and '剩余时间' in line else (0, 0, 0)
                         draw.text((x_offset + 20, y), line, fill=color, font=font_content)
                         y += line_height
-                y += 15
-            y += 15
-    
+                
+                # 绘制头像行
+                if any(icons_list):  # 如果有头像需要显示
+                    x_icon = x_offset + 20
+                    y_icon = y
+                    
+                    # 合并所有头像（跨多行）
+                    all_icons = []
+                    for icons in icons_list:
+                        all_icons.extend(icons)
+                    
+                    # 绘制头像
+                    for char_id, icon in all_icons:
+                        img.paste(icon, (x_icon, y_icon), icon)
+                        x_icon += icon_size + 5  # 头像间距5像素
+                    
+                    y += icon_line_height
+                else:
+                    y += 15  # 没有头像时的行间距
+                
+                y += 15  # 活动间间距
+            
+            y += 15  # 分类间间距
+
     # 根据模式绘制内容
     if use_two_columns:
-        # 双列模式
-        draw_column(50, column_contents[0])  # 左列
-        draw_column(img_width // 2 + 20, column_contents[1])  # 右列
+        await draw_column(50, column_contents[0])
+        await draw_column(img_width // 2 + 20, column_contents[1])
     else:
-        # 单列模式
-        draw_column(50, column_contents[0])
+        await draw_column(50, column_contents[0])
 
     # 如果没有活动
     if not any(activities for _, activities in classified_activities.items()):
