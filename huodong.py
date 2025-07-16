@@ -569,30 +569,15 @@ async def draw_half_monthly_report():
         font_category = ImageFont.load_default()
         font_content = ImageFont.load_default()
 
-    # 绘制标题 - 添加同色系较深描边
+    # 绘制标题 - 去掉描边
     title = "公主连结半月刊"
     try:
         title_width = draw.textlength(title, font=font_title)
-        x, y = (img_width - title_width) // 2, 50
-        
-        # 绘制描边（使用深灰色）
-        for dx in [-2, 0, 2]:
-            for dy in [-2, 0, 2]:
-                if dx != 0 or dy != 0:
-                    draw.text((x+dx, y+dy), title, fill=(60, 60, 60), font=font_title)
-        
-        # 绘制主文字
-        draw.text((x, y), title, fill=(0, 0, 0), font=font_title)
+        draw.text(((img_width - title_width) // 2, 50), title, fill=(0, 0, 0), font=font_title)
     except:
-        # 回退方案
-        x, y = 50, 50
-        for dx in [-2, 0, 2]:
-            for dy in [-2, 0, 2]:
-                if dx != 0 or dy != 0:
-                    draw.text((x+dx, y+dy), title, fill=(60, 60, 60))
-        draw.text((x, y), title, fill=(0, 0, 0))
+        draw.text((50, 50), title, fill=(0, 0, 0))
 
-    # 绘制日期 - 添加同色系较深描边
+    # 绘制日期 - 保留描边
     now = datetime.now()
     date_str = f"{now.year}年{now.month}月{now.day}日"
     try:
@@ -776,16 +761,7 @@ async def draw_half_monthly_report():
         no_activity_text = "当前没有进行中和即将开始的活动"
         try:
             text_width = draw.textlength(no_activity_text, font=font_title)
-            x, y = (img_width - text_width) // 2, total_height // 2
-            
-            # 绘制描边
-            for dx in [-2, 0, 2]:
-                for dy in [-2, 0, 2]:
-                    if dx != 0 or dy != 0:
-                        draw.text((x+dx, y+dy), no_activity_text, fill=(80, 80, 80), font=font_title)
-            
-            # 绘制主文字
-            draw.text((x, y), no_activity_text, fill=(150, 150, 150), font=font_title)
+            draw.text(((img_width - text_width) // 2, total_height // 2), no_activity_text, fill=(150, 150, 150), font=font_title)
         except:
             draw.text((50, total_height // 2), no_activity_text, fill=(150, 150, 150))
 
