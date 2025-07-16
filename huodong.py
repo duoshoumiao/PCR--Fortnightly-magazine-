@@ -456,7 +456,7 @@ async def draw_half_monthly_report():
         "其他活动": []
     }
     
-    # 分类活动数据（保持不变）
+    # 分类活动数据
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
@@ -469,33 +469,60 @@ async def draw_half_monthly_report():
                 classified_activities[category].append(f"{time_status}\n{sub}")
 
     # 图片尺寸
-    img_width = 800
+    img_width = 1400  # 加宽图片以适应双列
     base_height = 180
     line_height = 35
     padding = 50
     
-    # 计算内容高度（保持不变）
-    content_height = 0
+    ######################################################
+    # 超8行并列显示的核心判断逻辑开始
+    ######################################################
+    
+    # 计算总行数
+    total_lines = 0
+    category_blocks = []
     for category, activities in classified_activities.items():
         if activities:
-            content_height += 50  # 分类标题高度
-            for activity in activities:
-                lines = activity.split('\n')
-                content_height += len([line for line in lines if line.strip()]) * line_height
-                content_height += 10  # 行间距
-            content_height += 20  # 分类间距
+            # 每个分类块包含：1行标题 + 每个活动2行(时间+内容) + 1行间距
+            block_lines = 1 + len(activities) * 2 + 1
+            total_lines += block_lines
+            # 计算分类块高度
+            block_height = 50 + (len(activities) * (line_height * 2 + 10))
+            category_blocks.append((category, activities, block_height))
     
-    total_height = base_height + content_height + padding * 2
-    total_height = max(600, min(total_height, 3000))  # 限制最小和最大高度
+    # 自动切换双列模式（超过8行时启用）
+    use_two_columns = total_lines > 8
+    print(f"调试信息 - 总行数: {total_lines}, 使用双列模式: {use_two_columns}")
 
-    # 加载随机背景图片（修改为填充模式）
-    bg_dir = "C:/Resources/img/benzi/"
+    # 分配内容到列
+    column_heights = [0, 0]  # 左右两列的高度
+    column_contents = [[], []]  # 左右两列的内容
+    
+    for block in category_blocks:
+        if use_two_columns:
+            # 智能分配到较矮的列
+            target_col = 0 if column_heights[0] <= column_heights[1] else 1
+            column_contents[target_col].append(block)
+            column_heights[target_col] += block[2] + 20  # 块高度+间距
+        else:
+            column_contents[0].append(block)  # 单列模式全部放左列
+
+    ######################################################
+    # 超8行并列显示的核心判断逻辑结束
+    ######################################################
+
+    # 计算总高度
+    content_height = max(column_heights) if use_two_columns else sum(block[2] + 20 for block in category_blocks)
+    total_height = base_height + content_height + padding * 2
+    total_height = max(600, min(total_height, 3000))  # 限制高度范围
+
+    # 创建画布
     try:
+        bg_dir = "C:/Resources/img/benzi/"
         bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if bg_files:
             random_bg = random.choice(bg_files)
-            bg_path = os.path.join(bg_dir, random_bg)
-            bg_img = Image.open(bg_path).convert('RGBA')
+            bg_img = Image.open(os.path.join(bg_dir, random_bg)).convert('RGBA')
             
             # 计算填充尺寸（保持宽高比）
             bg_width, bg_height = bg_img.size
@@ -511,7 +538,7 @@ async def draw_half_monthly_report():
                 new_width = img_width
                 new_height = int(bg_height * (new_width / bg_width))
             
-            # 调整背景大小（保持宽高比）
+            # 调整背景大小
             bg_img = bg_img.resize((new_width, new_height), Image.LANCZOS)
             
             # 创建画布并居中放置背景
@@ -520,21 +547,18 @@ async def draw_half_monthly_report():
             y_offset = (total_height - new_height) // 2
             img.paste(bg_img, (x_offset, y_offset))
             
-            # 添加半透明遮罩使文字更清晰
+            # 添加半透明遮罩
             overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 180))
             img = Image.alpha_composite(img, overlay)
         else:
-            # 无背景图片时使用纯色背景
             img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
     except Exception as e:
         print(f"背景加载失败: {e}")
-        # 出错时使用纯色背景
         img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
     
-    # 其余绘制代码保持不变...
     draw = ImageDraw.Draw(img)
 
-    # 字体加载（保持不变）
+    # 加载字体
     try:
         font_path = None
         for font_name in ["msyh.ttc", "simhei.ttf", "simsun.ttc", "Arial Unicode MS.ttf"]:
@@ -558,7 +582,7 @@ async def draw_half_monthly_report():
         font_category = ImageFont.load_default()
         font_content = ImageFont.load_default()
 
-    # 绘制标题（保持不变）
+    # 绘制标题
     title = "公主连结半月刊"
     try:
         title_width = draw.textlength(title, font=font_title)
@@ -566,7 +590,7 @@ async def draw_half_monthly_report():
     except:
         draw.text((50, 50), title, fill=(0, 0, 0))
 
-    # 绘制日期（保持不变）
+    # 绘制日期
     now = datetime.now()
     date_str = f"{now.year}年{now.month}月{now.day}日"
     try:
@@ -575,44 +599,45 @@ async def draw_half_monthly_report():
     except:
         draw.text((50, 100), date_str, fill=(100, 100, 100))
 
-    # 绘制分割线（保持不变）
+    # 绘制分割线
     draw.line([(50, 150), (img_width - 50, 150)], fill=(200, 200, 200), width=2)
 
-    # 绘制活动内容（保持不变）
-    y_position = 180
+    # 绘制内容区域
+    y_start = 180
+    column_width = img_width // 2 - 70 if use_two_columns else img_width - 100
     
-    for category, activities in classified_activities.items():
-        if not activities:
-            continue
+    def draw_column(x_offset, blocks):
+        y = y_start
+        for category, activities, block_height in blocks:
+            # 绘制分类标题
+            draw.rectangle([(x_offset, y), (x_offset + column_width, y + 40)], 
+                         fill=category_colors[category])
+            draw.text((x_offset + 20, y + 5), category, fill=(255, 255, 255), font=font_category)
             
-        # 绘制分类标题
-        draw.rectangle([(50, y_position), (img_width - 50, y_position + 40)], fill=category_colors[category])
-        try:
-            draw.text((70, y_position + 5), category, fill=(255, 255, 255), font=font_category)
-        except:
-            draw.text((70, y_position + 5), category, fill=(255, 255, 255))
-        y_position += 50
-        
-        # 绘制活动内容
-        for activity in activities:
-            lines = activity.split('\n')
-            for i, line in enumerate(lines):
-                if line.strip():
-                    try:
-                        if i == 0 and ('开始倒计时' in line or '剩余时间' in line):
-                            color = (255, 150, 50) if '开始倒计时' in line else (50, 200, 50)
-                            draw.text((70, y_position), line, fill=color, font=font_content)
-                        else:
-                            draw.text((70, y_position), line, fill=(0, 0, 0), font=font_content)
-                    except:
-                        draw.text((70, y_position), line, fill=(0, 0, 0))
-                    y_position += line_height
-            y_position += 10
-        
-        y_position += 20 - 10  # 分类间距调整
+            # 绘制活动内容
+            y += 50
+            for activity in activities:
+                lines = activity.split('\n')
+                for i, line in enumerate(lines):
+                    if line.strip():
+                        color = (255, 150, 50) if i == 0 and '开始倒计时' in line else (
+                                50, 200, 50) if i == 0 and '剩余时间' in line else (0, 0, 0)
+                        draw.text((x_offset + 20, y), line, fill=color, font=font_content)
+                        y += line_height
+                y += 15
+            y += 15
+    
+    # 根据模式绘制内容
+    if use_two_columns:
+        # 双列模式
+        draw_column(50, column_contents[0])  # 左列
+        draw_column(img_width // 2 + 20, column_contents[1])  # 右列
+    else:
+        # 单列模式
+        draw_column(50, column_contents[0])
 
-    # 如果没有活动（保持不变）
-    if y_position == 180:
+    # 如果没有活动
+    if not any(activities for _, activities in classified_activities.items()):
         no_activity_text = "当前没有进行中和即将开始的活动"
         try:
             text_width = draw.textlength(no_activity_text, font=font_title)
@@ -620,7 +645,7 @@ async def draw_half_monthly_report():
         except:
             draw.text((50, total_height // 2), no_activity_text, fill=(150, 150, 150))
 
-    # 保存图片（保持不变）
+    # 保存图片
     img_byte_arr = io.BytesIO()
     if img.mode == 'RGBA':
         img = img.convert('RGB')
@@ -635,79 +660,89 @@ async def half_monthly_report(session):
     await session.send("[CQ:image,file=base64://{}]".format(base64.b64encode(img.getvalue()).decode()))
 
 # 通用绘制文本图片函数
-async def draw_text_image(title, text):
+async def draw_text_image(title: str, content: str):
+    """绘制带标题的文本图片"""
+    # 图片尺寸
     img_width = 800
     line_height = 40
-    padding = 50
-    title_height = 80
-    text_lines = text.split('\n')
-    content_height = len([line for line in text_lines if line.strip()]) * line_height
-    total_height = title_height + content_height + padding * 2
+    padding = 40
     
-    min_height = 300
-    max_height = 2000
-    total_height = max(min_height, min(total_height, max_height))
+    # 计算所需高度
+    lines = content.split('\n')
+    content_height = len(lines) * line_height
+    total_height = padding * 2 + 60 + content_height  # 60为标题区域高度
     
-    background_color = (240, 240, 245)
-    img = Image.new('RGB', (img_width, total_height), background_color)
+    # 创建图片
+    img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
     draw = ImageDraw.Draw(img)
     
+    # 加载字体
     try:
-        font_paths = [
-            "msyh.ttc",
-            "simhei.ttf",
-            "simsun.ttc",
-            "Arial Unicode MS.ttf"
-        ]
-        
-        font_title = None
-        font_content = None
-        
-        for path in font_paths:
+        font_path = None
+        for font_name in ["msyh.ttc", "simhei.ttf", "simsun.ttc", "Arial Unicode MS.ttf"]:
             try:
-                font_title = ImageFont.truetype(path, 36)
-                font_content = ImageFont.truetype(path, 24)
+                font_path = ImageFont.truetype(font_name, 36)
                 break
             except:
                 continue
         
-        if font_title is None:
+        if font_path is None:
             font_title = ImageFont.load_default()
             font_content = ImageFont.load_default()
-    except:
+        else:
+            font_title = ImageFont.truetype(font_path.path, 36) if hasattr(font_path, 'path') else ImageFont.load_default()
+            font_content = ImageFont.truetype(font_path.path, 24) if hasattr(font_path, 'path') else ImageFont.load_default()
+    except Exception as e:
+        print(f"字体加载失败: {e}")
         font_title = ImageFont.load_default()
         font_content = ImageFont.load_default()
     
     # 绘制标题
     try:
         title_width = draw.textlength(title, font=font_title)
-        draw.text(((img_width - title_width) // 2, 30), title, fill=(0, 0, 0), font=font_title)
+        draw.text(((img_width - title_width) // 2, padding), title, fill=(0, 0, 0), font=font_title)
     except:
-        draw.text((50, 30), title, fill=(0, 0, 0))
+        draw.text((padding, padding), title, fill=(0, 0, 0))
     
     # 绘制分割线
-    draw.line([(50, 80), (img_width - 50, 80)], fill=(200, 200, 200), width=2)
+    draw.line([(padding, padding + 50), (img_width - padding, padding + 50)], fill=(200, 200, 200), width=2)
     
-    # 绘制文本内容
-    y_position = 100
-    for line in text_lines:
+    # 绘制内容
+    y_position = padding + 60
+    for line in lines:
         if line.strip():
-            # 为时间状态行添加颜色
-            if ('开始倒计时' in line or '剩余时间' in line) and '[' in line and ']' in line:
-                if '开始倒计时' in line:
-                    color = (255, 150, 50)  # 橙色
-                else:
-                    color = (50, 200, 50)  # 绿色
-                draw.text((padding, y_position), line, fill=color, font=font_content)
-            else:
+            try:
                 draw.text((padding, y_position), line, fill=(0, 0, 0), font=font_content)
+            except:
+                draw.text((padding, y_position), line, fill=(0, 0, 0))
             y_position += line_height
     
+    # 保存图片
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
     
     return img_byte_arr
+
+
+async def daily_activity():
+    """日常活动"""
+    current_time = time.time()
+    msg = ""
+    
+    for activity in data:
+        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
+        end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
+        
+        if start_time <= current_time <= end_time:
+            time_status = format_activity_status(start_time, end_time, current_time)
+            msg += f"{time_status}\n{activity['活动名']}\n\n"
+    
+    if not msg:
+        msg = "当前没有进行中的活动"
+    
+    img = await draw_text_image("日常活动", msg)
+    return img
 
 # 日常活动/日历功能
 @sv.on_command('日常活动', aliases=('日历', '日程'))
