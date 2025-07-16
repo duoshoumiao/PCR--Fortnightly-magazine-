@@ -41,7 +41,8 @@ hoshino v1 插件
 
 2025/07/10 更新自动更新
 
-<img width="800" height="2260" alt="400417aebc52796ad5b0a53652abebaf" src="https://github.com/user-attachments/assets/697265fd-b299-4170-8df4-fa08a4e32584" />
+<img width="1400" height="1700" alt="3c251beee13738b8a701c67a6aadc437" src="https://github.com/user-attachments/assets/f8adb86c-075a-42e8-882c-bf452b6f8945" />
+
 
 <img width="457" height="753" alt="image" src="https://github.com/user-attachments/assets/9ddc6fdf-675d-4d8e-97b5-646e8ad298f9" />
 
