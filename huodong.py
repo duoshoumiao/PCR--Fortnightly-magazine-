@@ -459,7 +459,7 @@ async def draw_half_monthly_report():
         "其他活动": []
     }
 
-    # 分类活动数据（保持不变）
+    # 分类活动数据
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
@@ -471,7 +471,7 @@ async def draw_half_monthly_report():
                 time_status = format_activity_status(start_time, end_time, current_time)
                 classified_activities[category].append(f"{time_status}\n{sub}")
 
-    # 图片尺寸（保持不变）
+    # 图片尺寸
     img_width = 1400
     base_height = 180
     line_height = 35
@@ -479,7 +479,7 @@ async def draw_half_monthly_report():
     icon_line_height = 40
     padding = 50
     
-    # 计算总行数（保持不变）
+    # 计算总行数
     total_lines = 0
     category_blocks = []
     for category, activities in classified_activities.items():
@@ -489,10 +489,10 @@ async def draw_half_monthly_report():
             block_height = 50 + (len(activities) * (line_height * 2 + icon_line_height + 15))
             category_blocks.append((category, activities, block_height))
     
-    # 自动切换双列模式（保持不变）
+    # 自动切换双列模式
     use_two_columns = total_lines > 30
 
-    # 分配内容到列（保持不变）
+    # 分配内容到列
     column_heights = [0, 0]
     column_contents = [[], []]
     
@@ -504,12 +504,12 @@ async def draw_half_monthly_report():
         else:
             column_contents[0].append(block)
 
-    # 计算总高度（保持不变）
+    # 计算总高度
     content_height = max(column_heights) if use_two_columns else sum(block[2] + 20 for block in category_blocks)
     total_height = base_height + content_height + padding * 2
     total_height = max(600, min(total_height, 3000))
 
-    # 创建画布（保持不变）
+    # 创建画布
     try:
         bg_dir = "C:/Resources/img/benzi/"
         bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
@@ -545,7 +545,7 @@ async def draw_half_monthly_report():
     
     draw = ImageDraw.Draw(img)
 
-    # 加载字体（保持不变）
+    # 加载字体
     try:
         font_path = None
         for font_name in ["msyh.ttc", "simhei.ttf", "simsun.ttc", "Arial Unicode MS.ttf"]:
@@ -569,51 +569,53 @@ async def draw_half_monthly_report():
         font_category = ImageFont.load_default()
         font_content = ImageFont.load_default()
 
-    # 绘制标题 - 添加黑色描边
+    # 绘制标题 - 添加同色系较深描边
     title = "公主连结半月刊"
     try:
         title_width = draw.textlength(title, font=font_title)
         x, y = (img_width - title_width) // 2, 50
         
-        # 绘制描边（8个方向各绘制一次）
+        # 绘制描边（使用深灰色）
         for dx in [-2, 0, 2]:
             for dy in [-2, 0, 2]:
                 if dx != 0 or dy != 0:
-                    draw.text((x+dx, y+dy), title, fill=(0, 0, 0), font=font_title)
+                    draw.text((x+dx, y+dy), title, fill=(60, 60, 60), font=font_title)
         
         # 绘制主文字
-        draw.text((x, y), title, fill=(255, 255, 255), font=font_title)
+        draw.text((x, y), title, fill=(0, 0, 0), font=font_title)
     except:
         # 回退方案
-        draw.text((50, 50), title, fill=(255, 255, 255))
+        x, y = 50, 50
         for dx in [-2, 0, 2]:
             for dy in [-2, 0, 2]:
                 if dx != 0 or dy != 0:
-                    draw.text((50+dx, 50+dy), title, fill=(0, 0, 0))
+                    draw.text((x+dx, y+dy), title, fill=(60, 60, 60))
+        draw.text((x, y), title, fill=(0, 0, 0))
 
-    # 绘制日期 - 添加黑色描边
+    # 绘制日期 - 添加同色系较深描边
     now = datetime.now()
     date_str = f"{now.year}年{now.month}月{now.day}日"
     try:
         date_width = draw.textlength(date_str, font=font_content)
         x, y = (img_width - date_width) // 2, 100
         
-        # 绘制描边
+        # 绘制描边（使用深灰色）
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 if dx != 0 or dy != 0:
-                    draw.text((x+dx, y+dy), date_str, fill=(0, 0, 0), font=font_content)
+                    draw.text((x+dx, y+dy), date_str, fill=(80, 80, 80), font=font_content)
         
         # 绘制主文字
-        draw.text((x, y), date_str, fill=(200, 200, 200), font=font_content)
+        draw.text((x, y), date_str, fill=(100, 100, 100), font=font_content)
     except:
-        draw.text((50, 100), date_str, fill=(200, 200, 200))
+        x, y = 50, 100
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 if dx != 0 or dy != 0:
-                    draw.text((50+dx, 100+dy), date_str, fill=(0, 0, 0))
+                    draw.text((x+dx, y+dy), date_str, fill=(80, 80, 80))
+        draw.text((x, y), date_str, fill=(100, 100, 100))
 
-    # 绘制分割线（保持不变）
+    # 绘制分割线
     draw.line([(50, 150), (img_width - 50, 150)], fill=(200, 200, 200), width=2)
 
     # 绘制内容区域
@@ -669,18 +671,22 @@ async def draw_half_monthly_report():
                 radius=10, fill=fill_color
             )
             
-            # 绘制分类标题文字 - 添加黑色描边
+            # 绘制分类标题文字 - 添加同色系较深描边
             try:
                 text = category
                 text_width = draw.textlength(text, font=font_category)
                 text_x = x_offset + (column_width - text_width) // 2
                 text_y = y + 5
                 
+                # 计算同色系较深颜色
+                r, g, b = category_colors[category]
+                outline_color = (max(0, r-60), max(0, g-60), max(0, b-60))
+                
                 # 绘制描边
                 for dx in [-1, 0, 1]:
                     for dy in [-1, 0, 1]:
                         if dx != 0 or dy != 0:
-                            draw.text((text_x+dx, text_y+dy), text, fill=(0, 0, 0), font=font_category)
+                            draw.text((text_x+dx, text_y+dy), text, fill=outline_color, font=font_category)
                 
                 # 绘制主文字
                 draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font_category)
@@ -709,27 +715,30 @@ async def draw_half_monthly_report():
                 content_bg = Image.new('RGBA', (column_width, content_height + 20), (255, 255, 255, 100))
                 img.paste(content_bg, (x_offset, y), content_bg)
                 
-                # 绘制文本 - 倒计时添加黑色描边
+                # 绘制文本 - 倒计时使用同色系较深描边
                 for i, line in enumerate(processed_lines):
                     if line.strip():
                         # 确定颜色
                         if i == 0 and '开始倒计时' in line:
-                            color = (255, 150, 50)  # 橙色
+                            main_color = (255, 200, 50)  # 亮橙色
+                            outline_color = (180, 120, 0)  # 深橙色描边
                         elif i == 0 and '剩余时间' in line:
-                            color = (50, 200, 50)   # 绿色
+                            main_color = (100, 255, 100)  # 亮绿色
+                            outline_color = (0, 150, 0)  # 深绿色描边
                         else:
-                            color = (0, 0, 0)       # 黑色
+                            main_color = (0, 0, 0)       # 黑色
+                            outline_color = None
                         
                         # 绘制倒计时文本的描边
-                        if i == 0:  # 只有倒计时文本添加描边
+                        if i == 0 and outline_color:  # 只有倒计时文本添加描边
                             for dx in [-1, 0, 1]:
                                 for dy in [-1, 0, 1]:
                                     if dx != 0 or dy != 0:
                                         draw.text((x_offset + 20 + dx, y + dy), line, 
-                                                 fill=(0, 0, 0), font=font_content)
+                                                 fill=outline_color, font=font_content)
                         
                         # 绘制主文字
-                        draw.text((x_offset + 20, y), line, fill=color, font=font_content)
+                        draw.text((x_offset + 20, y), line, fill=main_color, font=font_content)
                         y += line_height
                 
                 # 绘制头像行
@@ -755,14 +764,14 @@ async def draw_half_monthly_report():
             
             y += 15
 
-    # 根据模式绘制内容（保持不变）
+    # 根据模式绘制内容
     if use_two_columns:
         await draw_column(50, column_contents[0])
         await draw_column(img_width // 2 + 20, column_contents[1])
     else:
         await draw_column(50, column_contents[0])
 
-    # 如果没有活动（保持不变）
+    # 如果没有活动
     if not any(activities for _, activities in classified_activities.items()):
         no_activity_text = "当前没有进行中和即将开始的活动"
         try:
@@ -773,14 +782,14 @@ async def draw_half_monthly_report():
             for dx in [-2, 0, 2]:
                 for dy in [-2, 0, 2]:
                     if dx != 0 or dy != 0:
-                        draw.text((x+dx, y+dy), no_activity_text, fill=(0, 0, 0), font=font_title)
+                        draw.text((x+dx, y+dy), no_activity_text, fill=(80, 80, 80), font=font_title)
             
             # 绘制主文字
             draw.text((x, y), no_activity_text, fill=(150, 150, 150), font=font_title)
         except:
             draw.text((50, total_height // 2), no_activity_text, fill=(150, 150, 150))
 
-    # 保存图片（保持不变）
+    # 保存图片
     img_byte_arr = io.BytesIO()
     if img.mode == 'RGBA':
         img = img.convert('RGB')
@@ -791,8 +800,23 @@ async def draw_half_monthly_report():
 
 @sv.on_command('半月刊')
 async def half_monthly_report(session):
-    img = await draw_half_monthly_report()
-    await session.send("[CQ:image,file=base64://{}]".format(base64.b64encode(img.getvalue()).decode()))
+    # 先发送一条提示消息
+    msg_id = (await session.send("⏳ 半月刊生成中，请稍等..."))['message_id']
+    
+    try:
+        # 生成图片
+        img = await draw_half_monthly_report()
+        # 发送图片
+        await session.send("[CQ:image,file=base64://{}]".format(base64.b64encode(img.getvalue()).decode()))
+    except Exception as e:
+        sv.logger.error(f"生成半月刊时出错: {e}")
+        await session.send("❌ 生成半月刊时出错，请稍后再试")
+    finally:
+        # 尝试删除提示消息
+        try:
+            await session.bot.delete_msg(message_id=msg_id)
+        except Exception as e:
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 通用绘制文本图片函数
 async def draw_text_image(title: str, content: str):
