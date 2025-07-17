@@ -795,17 +795,59 @@ async def half_monthly_report(session):
             sv.logger.error(f"删除提示消息失败: {e}")
 
 # 通用绘制文本图片函数
-async def draw_text_image(title: str, content: str):
-    """绘制带标题的文本图片"""
+async def draw_text_image_with_icons(title: str, content: str):
+    """绘制带标题和头像的文本图片（头像显示在对应内容的下一行）"""
     # 图片尺寸
     img_width = 800
     line_height = 40
+    icon_size = 50
+    icon_padding = 5
     padding = 40
     
+    # 分割内容为段落
+    paragraphs = content.split('\n\n')
+    
     # 计算所需高度
-    lines = content.split('\n')
-    content_height = len(lines) * line_height
-    total_height = padding * 2 + 60 + content_height  # 60为标题区域高度
+    total_height = padding * 2 + 60  # 基础高度（标题区域）
+    
+    # 预计算所有段落和头像
+    paragraph_data = []
+    for para in paragraphs:
+        # 处理角色ID
+        char_ids = re.findall(r'\d{4,6}', para)
+        icons = []
+        processed_text = para
+        
+        for char_id in char_ids:
+            try:
+                char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}31.png').path
+                if os.path.exists(char_icon_path):
+                    icon = Image.open(char_icon_path).convert("RGBA")
+                    icon = icon.resize((icon_size, icon_size), Image.LANCZOS)
+                    
+                    # 为头像添加白色边框
+                    border_size = 2
+                    bordered_icon = Image.new('RGBA', (icon_size + border_size*2, icon_size + border_size*2), (255, 255, 255, 200))
+                    bordered_icon.paste(icon, (border_size, border_size), icon)
+                    
+                    icons.append(bordered_icon)
+                    processed_text = processed_text.replace(char_id, "")
+            except Exception as e:
+                sv.logger.error(f"加载角色头像失败: {e}")
+                processed_text = processed_text.replace(char_id, "")
+        
+        # 计算段落高度
+        lines = processed_text.split('\n')
+        text_height = len(lines) * line_height
+        if icons:
+            text_height += icon_size + 10  # 头像行高度
+        
+        paragraph_data.append({
+            'text': processed_text,
+            'icons': icons,
+            'height': text_height
+        })
+        total_height += text_height + 20  # 段落间距
     
     # 创建图片
     img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
@@ -844,13 +886,27 @@ async def draw_text_image(title: str, content: str):
     
     # 绘制内容
     y_position = padding + 60
-    for line in lines:
-        if line.strip():
-            try:
-                draw.text((padding, y_position), line, fill=(0, 0, 0), font=font_content)
-            except:
-                draw.text((padding, y_position), line, fill=(0, 0, 0))
-            y_position += line_height
+    
+    for para in paragraph_data:
+        # 绘制文本
+        lines = para['text'].split('\n')
+        for line in lines:
+            if line.strip():
+                try:
+                    draw.text((padding, y_position), line, fill=(0, 0, 0), font=font_content)
+                except:
+                    draw.text((padding, y_position), line, fill=(0, 0, 0))
+                y_position += line_height
+        
+        # 绘制头像（在文本下方）
+        if para['icons']:
+            x_icon = padding
+            for icon in para['icons']:
+                img.paste(icon, (x_icon, y_position), icon)
+                x_icon += icon_size + icon_padding
+            y_position += icon_size + 10
+        
+        y_position += 10  # 段落间距
     
     # 保存图片
     img_byte_arr = io.BytesIO()
@@ -941,7 +997,7 @@ async def daily_activity(session):
     if has_tomorrow_activity:
         msg += '\n明日开始的活动：' + tomorrow_msg
     
-    img = await draw_text_image("日常活动", msg)
+    img = await draw_text_image_with_icons("日常活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 剧情活动功能
@@ -963,7 +1019,7 @@ async def story_activity(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('剧情活动（一周内活动）：\n') else msg + '当前没有剧情活动'
-    img = await draw_text_image("剧情活动", msg)
+    img = await draw_text_image_with_icons("剧情活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # UP卡池功能
@@ -985,7 +1041,7 @@ async def up_gacha(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('up卡池（一周内活动）：\n') else msg + '当前没有up卡池'
-    img = await draw_text_image("UP卡池", msg)
+    img = await draw_text_image_with_icons("UP卡池", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 免费十连功能
@@ -1004,7 +1060,7 @@ async def free_gacha(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('免费十连活动：\n') else msg + '当前没有免费十连活动'
-    img = await draw_text_image("免费十连", msg)
+    img = await draw_text_image_with_icons("免费十连", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 公会战功能
@@ -1023,7 +1079,7 @@ async def clan_battle(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('公会战信息：\n') else msg + '当前没有公会战活动'
-    img = await draw_text_image("公会战", msg)
+    img = await draw_text_image_with_icons("公会战", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 露娜塔功能
@@ -1042,7 +1098,7 @@ async def luna_tower(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('露娜塔信息：\n') else msg + '当前没有露娜塔活动'
-    img = await draw_text_image("露娜塔", msg)
+    img = await draw_text_image_with_icons("露娜塔", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 新开专武功能
@@ -1061,7 +1117,7 @@ async def new_unique(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('新开专武信息：\n') else msg + '当前没有新开专武信息'
-    img = await draw_text_image("新开专武", msg)
+    img = await draw_text_image_with_icons("新开专武", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 斗技场功能
@@ -1080,7 +1136,7 @@ async def arena(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('斗技场信息：\n') else msg + '当前没有斗技场活动'
-    img = await draw_text_image("斗技场", msg)
+    img = await draw_text_image_with_icons("斗技场", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 庆典活动功能
@@ -1099,7 +1155,7 @@ async def campaign(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('庆典/双倍活动：\n') else msg + '当前没有庆典/双倍活动'
-    img = await draw_text_image("庆典活动", msg)
+    img = await draw_text_image_with_icons("庆典活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
 
 # 地下城功能
@@ -1118,6 +1174,6 @@ async def dungeon(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('地下城活动：\n') else msg + '当前没有地下城活动'
-    img = await draw_text_image("地下城活动", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")    
+    img = await draw_text_image_with_icons("地下城活动", msg)
+    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
     
