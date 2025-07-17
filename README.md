@@ -1,4 +1,4 @@
-# PCR-Fortnightly-magazine
+# PCR-Fortnightly-magazine 一个会自动更新的半月刊
 公主连结半月刊
 hoshino v1 插件
 
