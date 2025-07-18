@@ -120,8 +120,8 @@ async def daily_calendar_push():
     try:
         # 获取日常活动文本内容
         msg = await get_daily_activity_text()
-        # 生成图片
-        img = await draw_text_image("每日活动推送", msg)
+        # 生成图片 - 修改这里
+        img = await draw_text_image_with_icons("每日活动推送", msg)
         img_b64 = base64.b64encode(img.getvalue()).decode()
         
         for group_id in enabled_groups:
