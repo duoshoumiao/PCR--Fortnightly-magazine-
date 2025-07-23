@@ -397,7 +397,7 @@ async def update_half_monthly(session):
                              f"已加载 {len(data)} 条活动数据\n"
                              "可以使用【半月刊】命令查看最新内容")
         else:
-            await session.send("🔄🔄 半月刊数据已是最新版本，无需更新")
+            await session.send("🔄🔄 半月刊更新失败，可能半月刊已经最新")
             
     except Exception as e:
         sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
