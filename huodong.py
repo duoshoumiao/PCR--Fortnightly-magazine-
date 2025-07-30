@@ -615,14 +615,19 @@ async def draw_half_monthly_report():
         """处理文本中的角色ID，返回处理后的文本和头像列表"""
         char_ids = re.findall(r'\d{4,6}', text)
         icons = []
-        
+    
         for char_id in char_ids:
             try:
+                # 尝试加载31尺寸头像
                 char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}31.png').path
+                if not os.path.exists(char_icon_path):
+                    # 尝试加载11尺寸作为备用
+                    char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}11.png').path
+            
                 if os.path.exists(char_icon_path):
                     icon = Image.open(char_icon_path).convert("RGBA")
                     icon = icon.resize((icon_size, icon_size), Image.LANCZOS)
-                    
+                
                     # 为头像添加白色边框
                     border_size = 2
                     bordered_icon = Image.new('RGBA', (icon_size + border_size*2, icon_size + border_size*2), (255, 255, 255, 200))
@@ -630,10 +635,12 @@ async def draw_half_monthly_report():
                     
                     icons.append((char_id, bordered_icon))
                     text = text.replace(char_id, "")
+                else:
+                    sv.logger.warning(f"角色头像不存在: {char_id}")
             except Exception as e:
                 sv.logger.error(f"加载角色头像失败: {e}")
                 text = text.replace(char_id, "")
-        
+    
         return text, icons
     
     async def draw_column(x_offset, blocks):
