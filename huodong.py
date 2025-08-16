@@ -19,7 +19,9 @@ import requests
 import hoshino
 from hoshino import R, Service, priv, util
 from hoshino.typing import CQEvent
-from hoshino.service import Service as sv  # 关键修复点
+from hoshino.service import Service as sv 
+from hoshino import logger, get_bot
+
 
 sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_='''
 【半月刊】：完整图片版\n
@@ -36,12 +38,22 @@ sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_
 【开启每日推送】 - 开启每日5:30的活动推送
 【关闭每日推送】 - 关闭每日推送
 【更新半月刊】
+【设置提醒 | 添加提醒】例如 设置提醒 免费十连 4天6小时0分钟 开始
+【查看提醒 | 我的提醒】查看当前用户设置的所有提醒
+【删除提醒 | 取消提醒】按 ID 删除指定提醒
 '''.strip())
  
 
 # ========== 配置文件管理 ==========
 PUSH_CONFIG_PATH = Path(__file__).parent / "push_config.json"
+# 修复：正确定义为Path对象（而不是字符串）
+REMINDER_FILE = Path(__file__).parent / "reminders.json"  # 这行是正确的，确保没有被改为字符串
 
+# 确保存储文件存在（这行触发了错误，因为REMINDER_FILE被错误地定义为字符串）
+if not REMINDER_FILE.exists():  # 只有Path对象才有exists()方法
+    with open(REMINDER_FILE, 'w', encoding='utf-8') as f:
+        json.dump([], f, ensure_ascii=False)
+        
 class PushConfig:
     @staticmethod
     def load():
@@ -615,19 +627,14 @@ async def draw_half_monthly_report():
         """处理文本中的角色ID，返回处理后的文本和头像列表"""
         char_ids = re.findall(r'\d{4,6}', text)
         icons = []
-    
+        
         for char_id in char_ids:
             try:
-                # 尝试加载31尺寸头像
                 char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}31.png').path
-                if not os.path.exists(char_icon_path):
-                    # 尝试加载11尺寸作为备用
-                    char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}11.png').path
-            
                 if os.path.exists(char_icon_path):
                     icon = Image.open(char_icon_path).convert("RGBA")
                     icon = icon.resize((icon_size, icon_size), Image.LANCZOS)
-                
+                    
                     # 为头像添加白色边框
                     border_size = 2
                     bordered_icon = Image.new('RGBA', (icon_size + border_size*2, icon_size + border_size*2), (255, 255, 255, 200))
@@ -635,12 +642,10 @@ async def draw_half_monthly_report():
                     
                     icons.append((char_id, bordered_icon))
                     text = text.replace(char_id, "")
-                else:
-                    sv.logger.warning(f"角色头像不存在: {char_id}")
             except Exception as e:
                 sv.logger.error(f"加载角色头像失败: {e}")
                 text = text.replace(char_id, "")
-    
+        
         return text, icons
     
     async def draw_column(x_offset, blocks):
@@ -1191,4 +1196,374 @@ async def dungeon(session):
     msg = msg if len(msg) > len('地下城活动：\n') else msg + '当前没有地下城活动'
     img = await draw_text_image_with_icons("地下城活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+
+
+
+# 提醒管理类
+class ReminderManager:
+    @staticmethod
+    def load_reminders():
+        """加载所有提醒设置"""
+        try:
+            with open(REMINDER_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"加载提醒数据失败: {str(e)}")
+            return []
     
+    @staticmethod
+    def save_reminders(reminders):
+        """保存提醒设置"""
+        try:
+            with open(REMINDER_FILE, 'w', encoding='utf-8') as f:
+                json.dump(reminders, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"保存提醒数据失败: {str(e)}")
+            return False
+    
+    @staticmethod
+    def add_reminder(keyword, threshold, user_id, group_id, reminder_type="end"):
+        """添加关键词提醒"""
+        try:
+            reminders = ReminderManager.load_reminders()
+            
+            # 检查是否已有相同的提醒
+            for r in reminders:
+                if (r['keyword'] == keyword and 
+                    r['threshold'] == threshold and 
+                    r['user_id'] == user_id and 
+                    r['group_id'] == group_id and
+                    r['reminder_type'] == reminder_type):
+                    logger.warning(f"重复添加提醒 - 用户{user_id} 关键词{keyword}")
+                    return False  # 已存在相同提醒
+            
+            # 生成唯一ID
+            new_id = max([r['id'] for r in reminders], default=0) + 1
+            
+            reminders.append({
+                'id': new_id,
+                'keyword': keyword,
+                'threshold': threshold,  # 阈值（秒）
+                'user_id': user_id,
+                'group_id': group_id,
+                'reminder_type': reminder_type,  # start: 开始前, end: 结束前
+                'created_at': datetime.now().timestamp()
+            })
+            
+            result = ReminderManager.save_reminders(reminders)
+            if result:
+                logger.info(f"添加提醒成功 - ID:{new_id} 用户{user_id} 关键词{keyword}")
+            return result
+        except Exception as e:
+            logger.error(f"添加提醒失败: {str(e)}")
+            return False
+    
+    @staticmethod
+    def remove_reminder(reminder_id, user_id):
+        """删除指定ID的提醒"""
+        try:
+            reminders = ReminderManager.load_reminders()
+            original_count = len(reminders)
+            
+            # 筛选需要保留的提醒（排除要删除的）
+            new_reminders = [
+                r for r in reminders 
+                if not (r['id'] == reminder_id and r['user_id'] == user_id)
+            ]
+            
+            # 验证是否有实际删除
+            if len(new_reminders) < original_count:
+                save_result = ReminderManager.save_reminders(new_reminders)
+                if save_result:
+                    logger.info(f"成功删除提醒 ID:{reminder_id}（用户:{user_id}）")
+                    return True
+                else:
+                    logger.error(f"删除提醒 ID:{reminder_id} 失败（保存数据失败）")
+                    return False
+            else:
+                logger.warning(f"未找到可删除的提醒 ID:{reminder_id}（用户:{user_id}）")
+                return False
+        except Exception as e:
+            logger.error(f"删除提醒时发生异常 ID:{reminder_id} - {str(e)}")
+            return False
+    
+    @staticmethod
+    def get_user_reminders(user_id):
+        """获取指定用户的所有提醒"""
+        try:
+            reminders = ReminderManager.load_reminders()
+            user_reminders = [r for r in reminders if r['user_id'] == user_id]
+            logger.debug(f"获取用户{user_id}的提醒列表，共{len(user_reminders)}条")
+            return user_reminders
+        except Exception as e:
+            logger.error(f"获取用户提醒失败: {str(e)}")
+            return []
+
+
+# 时间处理工具函数
+def parse_time_to_seconds(time_str):
+    """将时间字符串转换为总秒数"""
+    seconds = 0
+    day_match = re.search(r'(\d+)天', time_str)
+    hour_match = re.search(r'(\d+)小时', time_str)
+    minute_match = re.search(r'(\d+)分钟', time_str)
+    
+    if day_match:
+        seconds += int(day_match.group(1)) * 86400
+    if hour_match:
+        seconds += int(hour_match.group(1)) * 3600
+    if minute_match:
+        seconds += int(minute_match.group(1)) * 60
+    return seconds
+
+
+def format_seconds_to_time(seconds):
+    """将秒数转换为 天+小时+分钟 的格式"""
+    days = seconds // 86400
+    remaining = seconds % 86400
+    hours = remaining // 3600
+    minutes = (remaining % 3600) // 60
+    
+    parts = []
+    if days > 0:
+        parts.append(f"{days}天")
+    if hours > 0:
+        parts.append(f"{hours}小时")
+    if minutes > 0:
+        parts.append(f"{minutes}分钟")
+    
+    return "".join(parts) if parts else "0分钟"
+
+
+# 活动数据获取函数
+def get_activities_data():
+    """获取活动数据，优先从本地data.json加载"""
+    try:
+        data_file = Path(__file__).parent / "data.json"
+        if data_file.exists():
+            with open(data_file, 'r', encoding='utf-8') as f:
+                activities = json.load(f)
+                if isinstance(activities, list):
+                    logger.debug(f"从data.json加载活动数据 {len(activities)} 条")
+                    return activities
+                else:
+                    logger.error("data.json格式错误，应为列表类型")
+        else:
+            logger.warning("未找到data.json，使用示例活动数据")
+            return [
+                {
+                    "活动名": "免费十连活动",
+                    "开始时间": "2025/08/20 12",
+                    "结束时间": "2025/08/30 12"
+                },
+                {
+                    "活动名": "限定卡池UP",
+                    "开始时间": "2025/08/22 00",
+                    "结束时间": "2025/08/28 23"
+                },
+                {
+                    "活动名": "公会战",
+                    "开始时间": "2025/08/25 00",
+                    "结束时间": "2025/08/31 23"
+                }
+            ]
+    except Exception as e:
+        logger.error(f"获取活动数据失败: {str(e)}")
+        return []
+
+
+# 命令：设置提醒
+@sv.on_command('设置提醒', aliases=('添加提醒',))
+async def set_reminder(session):
+    args = session.current_arg_text.strip()
+    if not args:
+        await session.send("请使用格式：设置提醒 [关键词] [时间] [开始/结束]\n例如：设置提醒 十连 1天 开始")
+        return
+    
+    parts = args.split()
+    if len(parts) < 3:
+        await session.send("格式错误，请使用：设置提醒 [关键词] [时间] [开始/结束]")
+        return
+    
+    keyword = parts[0]
+    time_str = parts[1]
+    reminder_type = parts[2]
+    
+    if reminder_type not in ["开始", "结束"]:
+        await session.send("提醒类型错误，请使用：开始 或 结束")
+        return
+    reminder_type = "start" if reminder_type == "开始" else "end"
+    
+    threshold = parse_time_to_seconds(time_str)
+    if threshold <= 0:
+        await session.send("时间格式错误，请使用数字+单位（如：1天、2小时）")
+        return
+    
+    user_id = session.event.user_id
+    group_id = session.event.group_id
+    success = ReminderManager.add_reminder(keyword, threshold, user_id, group_id, reminder_type)
+    
+    if success:
+        display_time = format_seconds_to_time(threshold)
+        await session.send(f"✅ 已设置关键词「{keyword}」{display_time}前{parts[2]}提醒")
+    else:
+        await session.send(f"⚠️ 已存在相同的关键词提醒设置")
+
+
+# 命令：查看提醒
+@sv.on_command('查看提醒', aliases=('我的提醒',))
+async def view_reminders(session):
+    user_id = session.event.user_id
+    reminders = ReminderManager.get_user_reminders(user_id)
+    
+    if not reminders:
+        await session.send("您当前没有设置任何提醒")
+        return
+    
+    msg = "📋 您的提醒列表（ID用于删除）：\n"
+    for r in reminders:
+        time_str = format_seconds_to_time(r['threshold'])
+        type_str = "开始前" if r['reminder_type'] == 'start' else "结束前"
+        
+        msg += f"\nID: {r['id']}\n"
+        msg += f"关键词：{r['keyword']}\n"
+        msg += f"提醒：{type_str}{time_str}\n"
+    
+    await session.send(msg)
+
+
+# 命令：删除提醒
+@sv.on_command('删除提醒', aliases=('取消提醒',))
+async def delete_reminder(session):
+    args = session.current_arg_text.strip()
+    if not args:
+        await session.send("请使用格式：删除提醒 [提醒ID]\n示例：删除提醒 3\n可通过「查看提醒」获取ID")
+        return
+    
+    try:
+        reminder_id = int(args)
+    except ValueError:
+        await session.send("ID格式错误，请输入数字（例如：3）")
+        return
+    
+    user_id = session.event.user_id
+    success = ReminderManager.remove_reminder(reminder_id, user_id)
+    
+    if success:
+        await session.send(f"✅ 已成功删除ID为 {reminder_id} 的提醒")
+    else:
+        await session.send(f"❌ 未找到ID为 {reminder_id} 的提醒（可能已删除或不属于你）")
+
+
+# 定时检查任务（双重触发机制确保执行）
+# 同时使用interval和cron两种调度方式，确保每3分钟执行一次
+@scheduler.scheduled_job('interval', minutes=3, id='activity_reminder_interval')
+@scheduler.scheduled_job('cron', minute='*/3', id='activity_reminder_cron')
+async def check_reminders():
+    """定时检查活动时间，触发提醒（带详细日志）"""
+    # 记录任务开始时间
+    start_time = time.time()
+    logger.info(f"===== 活动提醒定时检查开始 =====")
+    logger.info(f"当前时间: {datetime.fromtimestamp(start_time).strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # 加载提醒数据
+    reminders = ReminderManager.load_reminders()
+    logger.info(f"共加载 {len(reminders)} 条提醒设置")
+    
+    if not reminders:
+        logger.info("没有需要检查的提醒，任务结束")
+        logger.info(f"===== 活动提醒定时检查结束 =====")
+        return
+    
+    # 获取bot实例
+    try:
+        bot = get_bot()
+        logger.info("成功获取bot实例，准备发送消息")
+    except Exception as e:
+        logger.error(f"获取bot实例失败，无法发送提醒: {str(e)}")
+        logger.info(f"===== 活动提醒定时检查结束 =====")
+        return
+    
+    # 加载活动数据
+    activities = get_activities_data()
+    logger.info(f"共加载 {len(activities)} 条活动数据")
+    
+    if not activities:
+        logger.warning("未加载到任何活动数据，无法进行提醒检查")
+        logger.info(f"===== 活动提醒定时检查结束 =====")
+        return
+    
+    to_remove = []  # 存储需要删除的提醒
+    
+    # 遍历所有提醒
+    for idx, reminder in enumerate(reminders, 1):
+        logger.debug(f"\n处理第 {idx}/{len(reminders)} 条提醒 - ID:{reminder['id']}")
+        logger.debug(f"关键词: {reminder['keyword']} 类型: {'开始前' if reminder['reminder_type'] == 'start' else '结束前'}")
+        logger.debug(f"阈值: {reminder['threshold']}秒 ({format_seconds_to_time(reminder['threshold'])})")
+        
+        # 查找匹配的活动
+        matched_activities = [
+            act for act in activities 
+            if reminder['keyword'] in act['活动名']
+        ]
+        
+        if not matched_activities:
+            logger.debug(f"未找到匹配关键词「{reminder['keyword']}」的活动")
+            continue
+        
+        logger.debug(f"找到 {len(matched_activities)} 个匹配活动")
+        
+        # 检查每个匹配的活动
+        for act in matched_activities:
+            try:
+                # 解析活动时间
+                act_start = datetime.strptime(act['开始时间'], "%Y/%m/%d %H")
+                act_end = datetime.strptime(act['结束时间'], "%Y/%m/%d %H")
+                act_start_ts = act_start.timestamp()
+                act_end_ts = act_end.timestamp()
+                
+                logger.debug(f"检查活动: {act['活动名']}")
+                logger.debug(f"活动时间: {act_start.strftime('%Y-%m-%d %H:%M')} 至 {act_end.strftime('%Y-%m-%d %H:%M')}")
+                
+                # 计算时间差
+                if reminder['reminder_type'] == 'start':
+                    time_diff = act_start_ts - start_time
+                    reminder_text = "即将开始"
+                    action_text = "开始"
+                else:
+                    time_diff = act_end_ts - start_time
+                    reminder_text = "即将结束"
+                    action_text = "结束"
+                
+                logger.debug(f"当前时间差: {time_diff:.1f}秒 阈值范围: {reminder['threshold']}秒")
+                
+                # 检查是否达到提醒条件
+                if 0 <= time_diff <= reminder['threshold'] + 300:
+                    # 发送提醒消息
+                    time_str = format_seconds_to_time(reminder['threshold'])
+                    message = f"[CQ:at,qq={reminder['user_id']}]\n⚠️ 您设置的关键词「{reminder['keyword']}」提醒触发：\n" \
+                              f"【{act['活动名']}】\n将在{time_str}后{action_text}（{reminder_text}）！"
+                    
+                    await bot.send_group_msg(group_id=reminder['group_id'], message=message)
+                    logger.info(f"已向群{reminder['group_id']}的用户{reminder['user_id']}发送提醒")
+                    
+                    # 标记为需要删除
+                    to_remove.append((reminder['id'], reminder['user_id']))
+                    break  # 一个提醒只触发一次
+                
+            except Exception as e:
+                logger.error(f"处理活动「{act.get('活动名', '未知')}」时出错: {str(e)}")
+                continue
+    
+    # 处理已触发的提醒
+    if to_remove:
+        logger.info(f"准备删除 {len(to_remove)} 条已触发的提醒")
+        for rid, uid in to_remove:
+            ReminderManager.remove_reminder(rid, uid)
+    
+    # 记录任务结束
+    end_time = time.time()
+    logger.info(f"任务执行耗时: {end_time - start_time:.2f}秒")
+    logger.info(f"===== 活动提醒定时检查结束 =====")
