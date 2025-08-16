@@ -23,11 +23,15 @@ from hoshino.service import Service as sv
 from hoshino import logger, get_bot
 
 
-sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_='''
-【半月刊】：完整图片版\n
-【日常活动|日历|日程】：显示进行中的活动和明天开始的活动\n
-【剧情活动|角色活动|活动】：只显示角色剧情活动\n
-【up卡池|up|卡池】：显示当前卡池跟未来卡池\n
+sv = SafeService(
+    '半月刊', 
+    enable_on_default=False, 
+    bundle='半月刊', 
+    help_='''
+【半月刊】：完整图片版
+【日常活动|日历|日程】：显示进行中的活动和明天开始的活动
+【剧情活动|角色活动|活动】：只显示角色剧情活动
+【up卡池|up|卡池】：显示当前卡池跟未来卡池
 【免费十连】 - 免费十连活动
 【公会战】- 公会战信息
 【露娜塔】 - 露娜塔信息
@@ -41,7 +45,11 @@ sv = SafeService('半月刊', enable_on_default=False, bundle='半月刊', help_
 【设置提醒 | 添加提醒】例如 设置提醒 免费十连 4天6小时0分钟 开始
 【查看提醒 | 我的提醒】查看当前用户设置的所有提醒
 【删除提醒 | 取消提醒】按 ID 删除指定提醒
-'''.strip())
+【订阅活动 类别】- 订阅某个类别的活动提醒，例如"订阅活动 免费十连"
+【取消订阅 类别】- 取消某个类别的活动订阅
+【我的订阅】- 查看自己订阅的活动类别
+'''.strip()
+)
  
 
 # ========== 配置文件管理 ==========
@@ -53,6 +61,202 @@ REMINDER_FILE = Path(__file__).parent / "reminders.json"  # 这行是正确的�
 if not REMINDER_FILE.exists():  # 只有Path对象才有exists()方法
     with open(REMINDER_FILE, 'w', encoding='utf-8') as f:
         json.dump([], f, ensure_ascii=False)
+
+# 新增订阅配置管理
+SUBSCRIBE_CONFIG_PATH = Path(__file__).parent / "subscribe_config.json"
+
+class SubscribeConfig:
+    @staticmethod
+    def load():
+        """加载订阅配置"""
+        try:
+            if SUBSCRIBE_CONFIG_PATH.exists():
+                with open(SUBSCRIBE_CONFIG_PATH, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            sv.logger.error(f"加载订阅配置失败: {e}")
+            return {}
+
+    @staticmethod
+    def save(config):
+        """保存订阅配置"""
+        try:
+            with open(SUBSCRIBE_CONFIG_PATH, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            sv.logger.error(f"保存订阅配置失败: {e}")
+
+    @staticmethod
+    def add_subscribe(user_id, category):
+        """添加用户订阅"""
+        config = SubscribeConfig.load()
+        user_key = str(user_id)
+        
+        if user_key not in config:
+            config[user_key] = []
+            
+        if category not in config[user_key]:
+            config[user_key].append(category)
+            SubscribeConfig.save(config)
+            return True
+        return False
+
+    @staticmethod
+    def remove_subscribe(user_id, category):
+        """取消用户订阅"""
+        config = SubscribeConfig.load()
+        user_key = str(user_id)
+        
+        if user_key in config and category in config[user_key]:
+            config[user_key].remove(category)
+            if not config[user_key]:  # 如果用户没有订阅了，移除该用户
+                del config[user_key]
+            SubscribeConfig.save(config)
+            return True
+        return False
+
+    @staticmethod
+    def get_user_subscribes(user_id):
+        """获取用户的所有订阅"""
+        config = SubscribeConfig.load()
+        return config.get(str(user_id), [])
+
+    @staticmethod
+    def get_subscribers(category):
+        """获取订阅了某个类别的所有用户"""
+        config = SubscribeConfig.load()
+        subscribers = []
+        for user_id, categories in config.items():
+            if category in categories:
+                subscribers.append(int(user_id))
+        return subscribers
+
+# 初始化订阅配置文件
+if not SUBSCRIBE_CONFIG_PATH.exists():
+    with open(SUBSCRIBE_CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump({}, f, ensure_ascii=False)
+
+# 添加订阅相关命令
+@sv.on_command('订阅活动')
+async def subscribe_activity(session):
+    """订阅活动类别，例如：订阅活动 免费十连"""
+    args = session.current_arg_text.strip()
+    if not args:
+        valid_categories = list(category_colors.keys())
+        await session.send("请指定要订阅的活动类别，例如：订阅活动 免费十连\n可用类别：\n" + "\n".join(valid_categories))
+        return
+        
+    # 检查是否是有效类别
+    valid_categories = category_colors.keys()
+    if args not in valid_categories:
+        await session.send(f"无效的活动类别！可用类别：\n" + "\n".join(valid_categories))
+        return
+        
+    user_id = session.event.user_id
+    success = SubscribeConfig.add_subscribe(user_id, args)
+    
+    if success:
+        await session.send(f"已成功订阅【{args}】类活动，活动开始时会艾特提醒您~")
+    else:
+        await session.send(f"您已经订阅过【{args}】类活动了哦~")
+
+@sv.on_command('取消订阅')
+async def unsubscribe_activity(session):
+    """取消订阅活动类别，例如：取消订阅 免费十连"""
+    args = session.current_arg_text.strip()
+    if not args:
+        user_id = session.event.user_id
+        subscribes = SubscribeConfig.get_user_subscribes(user_id)
+        if not subscribes:
+            await session.send("您没有订阅任何活动哦~")
+        else:
+            await session.send(f"请指定要取消订阅的活动类别，您当前订阅了：\n" + "\n".join(subscribes))
+        return
+        
+    user_id = session.event.user_id
+    success = SubscribeConfig.remove_subscribe(user_id, args)
+    
+    if success:
+        await session.send(f"已成功取消订阅【{args}】类活动")
+    else:
+        await session.send(f"您没有订阅过【{args}】类活动哦~")
+
+@sv.on_command('我的订阅')
+async def my_subscribes(session):
+    """查看自己订阅的活动类别"""
+    user_id = session.event.user_id
+    subscribes = SubscribeConfig.get_user_subscribes(user_id)
+    
+    if not subscribes:
+        await session.send("您没有订阅任何活动哦~ 可以使用【订阅活动 类别】来订阅感兴趣的活动")
+    else:
+        await session.send(f"您当前订阅的活动类别：\n" + "\n".join(subscribes))
+
+# 修改定时检查频率为每3分钟一次
+@scheduler.scheduled_job('cron', minute='*/3')
+async def check_upcoming_activities():
+    """每5分钟检查一次即将开始的活动并通知订阅者"""
+    if not data:
+        return
+        
+    current_time = time.time()
+    # 检查未来15分钟内将要开始的活动
+    notify_window = 15 * 60  # 15分钟
+    bot = get_bot()
+    
+    # 记录已经通知过的活动，避免重复通知
+    notified_key = "activity_notified"
+    if not hasattr(check_upcoming_activities, notified_key):
+        setattr(check_upcoming_activities, notified_key, set())
+    
+    for activity in data:
+        try:
+            start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
+            # 检查是否在通知窗口内
+            if current_time <= start_time <= current_time + notify_window:
+                # 生成唯一活动标识
+                activity_key = f"{activity['活动名']}_{start_time}"
+                if activity_key in getattr(check_upcoming_activities, notified_key):
+                    continue
+                    
+                # 提取子活动并分类
+                sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
+                for sub in sub_activities:
+                    category = classify_activity(sub)
+                    subscribers = SubscribeConfig.get_subscribers(category)
+                    
+                    if subscribers:
+                        # 准备通知消息
+                        start_datetime = datetime.fromtimestamp(start_time)
+                        time_str = start_datetime.strftime("%H:%M")
+                        msg = f"📢 您订阅的【{category}】类活动即将开始：\n【{sub}】\n将于今天{time_str}开始"
+                        
+                        # 对每个订阅者发送@消息
+                        for user_id in subscribers:
+                            try:
+                                # 向所有开启推送的群发送@消息
+                                for group_id in PushConfig.get_all_enabled():
+                                    await bot.send_group_msg(
+                                        group_id=group_id,
+                                        message=f"[CQ:at,qq={user_id}] {msg}"
+                                    )
+                                sv.logger.info(f"已向用户 {user_id} 发送活动开始提醒：{sub}")
+                            except Exception as e:
+                                sv.logger.error(f"向用户 {user_id} 发送提醒失败: {e}")
+                
+                # 标记为已通知
+                getattr(check_upcoming_activities, notified_key).add(activity_key)
+                
+                # 限制已通知集合大小，防止内存占用过大
+                if len(getattr(check_upcoming_activities, notified_key)) > 1000:
+                    # 移除最早的元素（这里使用列表转换来实现，实际可以用有序结构优化）
+                    notified_list = list(getattr(check_upcoming_activities, notified_key))
+                    notified_list.pop(0)
+                    setattr(check_upcoming_activities, notified_key, set(notified_list))
+                    
+        except Exception as e:
+            sv.logger.error(f"检查活动时出错: {e}")
         
 class PushConfig:
     @staticmethod
