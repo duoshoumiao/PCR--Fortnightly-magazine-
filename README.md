@@ -1,4 +1,4 @@
-# PCR-Fortnightly-magazine 一个会自动更新的半月刊
+![833f4f768d189b3c5d9e02db82e5565d](https://github.com/user-attachments/assets/b863779a-5f94-4402-8e22-be96e7375786)# PCR-Fortnightly-magazine 一个会自动更新的半月刊
 公主连结半月刊
 hoshino v1 插件
 
@@ -51,10 +51,9 @@ hoshino v1 插件
 2025/07/10 更新自动更新
 
 <img width="1400" height="1700" alt="0c83f54ed0210fab858fc386c3a6952d" src="https://github.com/user-attachments/assets/1352cb76-2d42-40df-af10-79220e9e7684" />
+![833f4f768d189b3c5d9e02db82e5565d](https://github.com/user-attachments/assets/90aad59f-1d41-4e8f-ac3a-091e0bc50380)
 <img width="800" height="1500" alt="d9465c74fa904866508b2a5cabaad5cc" src="https://github.com/user-attachments/assets/fd8f5e9b-1c7d-4549-9836-f82dbbb5c886" />
 <img width="800" height="560" alt="6477e65f7cfc753f6474b0ca2abfba55" src="https://github.com/user-attachments/assets/e40774eb-d5e2-4d54-afdc-d075051929e6" />
 <img width="800" height="720" alt="871da10437e7dd3cd3407834f991ea55" src="https://github.com/user-attachments/assets/73ab3504-d4f6-4677-8d5b-90f19491d14b" />
-
-
 <img width="457" height="753" alt="image" src="https://github.com/user-attachments/assets/9ddc6fdf-675d-4d8e-97b5-646e8ad298f9" />
 
