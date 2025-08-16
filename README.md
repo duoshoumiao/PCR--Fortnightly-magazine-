@@ -1,4 +1,4 @@
-![833f4f768d189b3c5d9e02db82e5565d](https://github.com/user-attachments/assets/b863779a-5f94-4402-8e22-be96e7375786)# PCR-Fortnightly-magazine 一个会自动更新的半月刊
+# PCR-Fortnightly-magazine 一个会自动更新的半月刊
 公主连结半月刊
 hoshino v1 插件
 
