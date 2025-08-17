@@ -6,10 +6,10 @@ import os
 import re
 import random
 import base64
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont  # 注意PIL库的正确导入方式
 import io
 from io import BytesIO  
-import asyncio  # 添加这行导入
+import asyncio
 import json
 from pathlib import Path
 from nonebot import on_command, get_bot
@@ -45,20 +45,19 @@ sv = SafeService(
 【设置提醒 | 添加提醒】例如 设置提醒 免费十连 4天6小时0分钟 开始
 【查看提醒 | 我的提醒】查看当前用户设置的所有提醒
 【删除提醒 | 取消提醒】按 ID 删除指定提醒
-【订阅活动 类别】- 订阅某个类别的活动提醒，例如"订阅活动 免费十连"
-【取消订阅 类别】- 取消某个类别的活动订阅
-【我的订阅】- 查看自己订阅的活动类别
+【订阅活动 类别】- 订阅某个类别的活动提醒，例如"订阅活动 免费十连"（在当前群生效）
+【取消订阅 类别】- 取消某个类别的活动订阅（在当前群生效）
+【我的订阅】- 查看自己在当前群的订阅活动类别
 '''.strip()
 )
  
 
 # ========== 配置文件管理 ==========
 PUSH_CONFIG_PATH = Path(__file__).parent / "push_config.json"
-# 修复：正确定义为Path对象（而不是字符串）
-REMINDER_FILE = Path(__file__).parent / "reminders.json"  # 这行是正确的，确保没有被改为字符串
+REMINDER_FILE = Path(__file__).parent / "reminders.json"
 
-# 确保存储文件存在（这行触发了错误，因为REMINDER_FILE被错误地定义为字符串）
-if not REMINDER_FILE.exists():  # 只有Path对象才有exists()方法
+# 确保存储文件存在
+if not REMINDER_FILE.exists():
     with open(REMINDER_FILE, 'w', encoding='utf-8') as f:
         json.dump([], f, ensure_ascii=False)
 
@@ -88,48 +87,61 @@ class SubscribeConfig:
             sv.logger.error(f"保存订阅配置失败: {e}")
 
     @staticmethod
-    def add_subscribe(user_id, category):
-        """添加用户订阅"""
+    def add_subscribe(user_id, group_id, category):
+        """添加用户在指定群的订阅"""
         config = SubscribeConfig.load()
         user_key = str(user_id)
+        group_key = str(group_id)
         
+        # 初始化用户配置
         if user_key not in config:
-            config[user_key] = []
+            config[user_key] = {}
+        # 初始化群配置
+        if group_key not in config[user_key]:
+            config[user_key][group_key] = []
             
-        if category not in config[user_key]:
-            config[user_key].append(category)
+        if category not in config[user_key][group_key]:
+            config[user_key][group_key].append(category)
             SubscribeConfig.save(config)
             return True
         return False
 
     @staticmethod
-    def remove_subscribe(user_id, category):
-        """取消用户订阅"""
+    def remove_subscribe(user_id, group_id, category):
+        """取消用户在指定群的订阅"""
         config = SubscribeConfig.load()
         user_key = str(user_id)
+        group_key = str(group_id)
         
-        if user_key in config and category in config[user_key]:
-            config[user_key].remove(category)
-            if not config[user_key]:  # 如果用户没有订阅了，移除该用户
+        if user_key in config and group_key in config[user_key] and category in config[user_key][group_key]:
+            config[user_key][group_key].remove(category)
+            # 如果用户在该群没有订阅了，移除群配置
+            if not config[user_key][group_key]:
+                del config[user_key][group_key]
+            # 如果用户没有任何群的订阅了，移除用户配置
+            if not config[user_key]:
                 del config[user_key]
             SubscribeConfig.save(config)
             return True
         return False
 
     @staticmethod
-    def get_user_subscribes(user_id):
-        """获取用户的所有订阅"""
+    def get_user_subscribes(user_id, group_id):
+        """获取用户在指定群的所有订阅"""
         config = SubscribeConfig.load()
-        return config.get(str(user_id), [])
+        user_key = str(user_id)
+        group_key = str(group_id)
+        return config.get(user_key, {}).get(group_key, [])
 
     @staticmethod
     def get_subscribers(category):
-        """获取订阅了某个类别的所有用户"""
+        """获取订阅了某个类别的所有(用户ID, 群ID)对"""
         config = SubscribeConfig.load()
         subscribers = []
-        for user_id, categories in config.items():
-            if category in categories:
-                subscribers.append(int(user_id))
+        for user_id, groups in config.items():
+            for group_id, categories in groups.items():
+                if category in categories:
+                    subscribers.append((int(user_id), int(group_id)))
         return subscribers
 
 # 初始化订阅配置文件
@@ -140,63 +152,68 @@ if not SUBSCRIBE_CONFIG_PATH.exists():
 # 添加订阅相关命令
 @sv.on_command('订阅活动')
 async def subscribe_activity(session):
-    """订阅活动类别，例如：订阅活动 免费十连"""
+    """订阅活动类别，例如：订阅活动 免费十连（在当前群生效）"""
     args = session.current_arg_text.strip()
     if not args:
-        valid_categories = list(category_colors.keys())
+        # 假设category_colors已在其他地方定义
+        valid_categories = list(category_colors.keys()) if 'category_colors' in globals() else []
         await session.send("请指定要订阅的活动类别，例如：订阅活动 免费十连\n可用类别：\n" + "\n".join(valid_categories))
         return
         
     # 检查是否是有效类别
-    valid_categories = category_colors.keys()
+    valid_categories = category_colors.keys() if 'category_colors' in globals() else []
     if args not in valid_categories:
         await session.send(f"无效的活动类别！可用类别：\n" + "\n".join(valid_categories))
         return
         
     user_id = session.event.user_id
-    success = SubscribeConfig.add_subscribe(user_id, args)
+    group_id = session.event.group_id  # 获取当前群ID
+    success = SubscribeConfig.add_subscribe(user_id, group_id, args)
     
     if success:
-        await session.send(f"已成功订阅【{args}】类活动，活动开始时会艾特提醒您~")
+        await session.send(f"已在本群成功订阅【{args}】类活动，活动开始时会在本群艾特提醒您~")
     else:
-        await session.send(f"您已经订阅过【{args}】类活动了哦~")
+        await session.send(f"您已经在本群订阅过【{args}】类活动了哦~")
 
 @sv.on_command('取消订阅')
 async def unsubscribe_activity(session):
-    """取消订阅活动类别，例如：取消订阅 免费十连"""
+    """取消订阅活动类别，例如：取消订阅 免费十连（在当前群生效）"""
     args = session.current_arg_text.strip()
+    user_id = session.event.user_id
+    group_id = session.event.group_id  # 获取当前群ID
+    
     if not args:
-        user_id = session.event.user_id
-        subscribes = SubscribeConfig.get_user_subscribes(user_id)
+        subscribes = SubscribeConfig.get_user_subscribes(user_id, group_id)
         if not subscribes:
-            await session.send("您没有订阅任何活动哦~")
+            await session.send("您在本群没有订阅任何活动哦~")
         else:
-            await session.send(f"请指定要取消订阅的活动类别，您当前订阅了：\n" + "\n".join(subscribes))
+            await session.send(f"请指定要取消订阅的活动类别，您在本群当前订阅了：\n" + "\n".join(subscribes))
         return
         
-    user_id = session.event.user_id
-    success = SubscribeConfig.remove_subscribe(user_id, args)
+    success = SubscribeConfig.remove_subscribe(user_id, group_id, args)
     
     if success:
-        await session.send(f"已成功取消订阅【{args}】类活动")
+        await session.send(f"已在本群成功取消订阅【{args}】类活动")
     else:
-        await session.send(f"您没有订阅过【{args}】类活动哦~")
+        await session.send(f"您在本群没有订阅过【{args}】类活动哦~")
 
 @sv.on_command('我的订阅')
 async def my_subscribes(session):
-    """查看自己订阅的活动类别"""
+    """查看自己在当前群的订阅活动类别"""
     user_id = session.event.user_id
-    subscribes = SubscribeConfig.get_user_subscribes(user_id)
+    group_id = session.event.group_id  # 获取当前群ID
+    subscribes = SubscribeConfig.get_user_subscribes(user_id, group_id)
     
     if not subscribes:
-        await session.send("您没有订阅任何活动哦~ 可以使用【订阅活动 类别】来订阅感兴趣的活动")
+        await session.send("您在本群没有订阅任何活动哦~ 可以使用【订阅活动 类别】来订阅感兴趣的活动")
     else:
-        await session.send(f"您当前订阅的活动类别：\n" + "\n".join(subscribes))
+        await session.send(f"您在本群当前订阅的活动类别：\n" + "\n".join(subscribes))
 
 # 修改定时检查频率为每3分钟一次
 @scheduler.scheduled_job('cron', minute='*/3')
 async def check_upcoming_activities():
-    """每5分钟检查一次即将开始的活动并通知订阅者"""
+    """每3分钟检查一次即将开始的活动并通知订阅者"""
+    global data  # 声明使用全局变量data
     if not data:
         return
         
@@ -223,7 +240,8 @@ async def check_upcoming_activities():
                 # 提取子活动并分类
                 sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
                 for sub in sub_activities:
-                    category = classify_activity(sub)
+                    # 假设classify_activity已在其他地方定义
+                    category = classify_activity(sub) if 'classify_activity' in globals() else ''
                     subscribers = SubscribeConfig.get_subscribers(category)
                     
                     if subscribers:
@@ -232,25 +250,34 @@ async def check_upcoming_activities():
                         time_str = start_datetime.strftime("%H:%M")
                         msg = f"📢 您订阅的【{category}】类活动即将开始：\n【{sub}】\n将于今天{time_str}开始"
                         
-                        # 对每个订阅者发送@消息
-                        for user_id in subscribers:
-                            try:
-                                # 向所有开启推送的群发送@消息
-                                for group_id in PushConfig.get_all_enabled():
+                        # 按群去重发送（同一群内可能有多个订阅者）
+                        group_notified = set()
+                        for user_id, group_id in subscribers:
+                            # 检查该群是否开启了推送
+                            if not PushConfig.get_group(group_id):
+                                continue
+                            # 同一群只发一次消息，@所有订阅者
+                            if group_id not in group_notified:
+                                # 收集该群内所有订阅者的@
+                                at_users = [f"[CQ:at,qq={uid}]" for uid, gid in subscribers if gid == group_id]
+                                at_msg = " ".join(at_users)
+                                full_msg = f"{at_msg} {msg}"
+                                
+                                try:
                                     await bot.send_group_msg(
                                         group_id=group_id,
-                                        message=f"[CQ:at,qq={user_id}] {msg}"
+                                        message=full_msg
                                     )
-                                sv.logger.info(f"已向用户 {user_id} 发送活动开始提醒：{sub}")
-                            except Exception as e:
-                                sv.logger.error(f"向用户 {user_id} 发送提醒失败: {e}")
+                                    sv.logger.info(f"已向群 {group_id} 的订阅者发送活动提醒：{sub}")
+                                    group_notified.add(group_id)
+                                except Exception as e:
+                                    sv.logger.error(f"向群 {group_id} 发送提醒失败: {e}")
                 
                 # 标记为已通知
                 getattr(check_upcoming_activities, notified_key).add(activity_key)
                 
                 # 限制已通知集合大小，防止内存占用过大
                 if len(getattr(check_upcoming_activities, notified_key)) > 1000:
-                    # 移除最早的元素（这里使用列表转换来实现，实际可以用有序结构优化）
                     notified_list = list(getattr(check_upcoming_activities, notified_key))
                     notified_list.pop(0)
                     setattr(check_upcoming_activities, notified_key, set(notified_list))
@@ -336,7 +363,7 @@ async def daily_calendar_push():
     try:
         # 获取日常活动文本内容
         msg = await get_daily_activity_text()
-        # 生成图片 - 修改这里
+        # 生成图片
         img = await draw_text_image_with_icons("每日活动推送", msg)
         img_b64 = base64.b64encode(img.getvalue()).decode()
         
@@ -435,7 +462,6 @@ def format_activity_status(start_time, end_time, current_time):
     if current_time < start_time:
         delta = start_time - current_time
         time_str = format_countdown(delta, is_future=True)
-        # 修改这里：在持续天数前增加开始日期
         return f'开始倒计时: {time_str}（{start_day}号开始,持续{duration_str}）'
     else:
         delta = end_time - current_time
@@ -520,7 +546,7 @@ data = load_activity_data()
 if not data:
     sv.logger.error("⚠️ 活动数据为空，请检查 data.json！")
 else:
-    sv.logger.info(f"📊📊 已加载 {len(data)} 条活动数据")
+    sv.logger.info(f"✅ 成功加载 {len(data)} 条活动数据")
 
 # 在文件顶部添加
 last_data_hash = None  # 存储上次数据的哈希值
