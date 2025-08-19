@@ -888,7 +888,6 @@ def classify_activity(activity_name):
         return "其他活动"
 
 # 绘制半月刊图片
-# 修改绘制半月刊图片的函数
 async def draw_half_monthly_report():
     current_time = time.time()
     classified_activities = {
@@ -935,8 +934,12 @@ async def draw_half_monthly_report():
             category_blocks.append((category, activities, block_height))
     
     # 自动切换双列模式
-    use_two_columns = total_lines > 30
-
+    use_two_columns = total_lines > 40
+    # 根据显示模式设置不同宽度（核心修改点）
+    if use_two_columns:
+        img_width = 1400  # 双列保持原有宽度
+    else:
+        img_width = 900   # 单列时使用更窄宽度
     # 分配内容到列
     column_heights = [0, 0]
     column_contents = [[], []]
@@ -953,6 +956,7 @@ async def draw_half_monthly_report():
     content_height = max(column_heights) if use_two_columns else sum(block[2] + 20 for block in category_blocks)
     total_height = base_height + content_height + padding * 2
     total_height = max(600, min(total_height, 3000))
+    column_width = img_width // 2 - 70 if use_two_columns else img_width - 100
 
     # 创建画布
     try:
