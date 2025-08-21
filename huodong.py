@@ -868,7 +868,7 @@ category_colors = {
 def classify_activity(activity_name):
     if 'N' in activity_name or 'H' in activity_name or 'VH' in activity_name or '庆典' in activity_name:
         return "庆典活动"
-    elif '剧情活动' in activity_name or '角色活动' in activity_name or '活动' in activity_name:
+    elif '剧情活动' in activity_name or '角色活动' in activity_name or '复刻剧情活动' in activity_name:
         return "剧情活动"
     elif 'up' in activity_name or '卡池' in activity_name:
         return "卡池"
@@ -1978,7 +1978,8 @@ async def check_reminders():
                     time_str = format_seconds_to_time(reminder['threshold'])
                     message = f"[CQ:at,qq={reminder['user_id']}]\n⚠️ 您设置的关键词「{reminder['keyword']}」提醒触发：\n" \
                               f"【{act['活动名']}】\n将在{time_str}后{action_text}（{reminder_text}）！"
-                    
+                    # 添加角色ID转换为头像的处理
+                    message = replace_char_ids_with_icons(message)
                     await bot.send_group_msg(group_id=reminder['group_id'], message=message)
                     logger.info(f"已向群{reminder['group_id']}的用户{reminder['user_id']}发送提醒")
                     
