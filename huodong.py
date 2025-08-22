@@ -934,7 +934,7 @@ async def draw_half_monthly_report():
             category_blocks.append((category, activities, block_height))
     
     # 自动切换双列模式
-    use_two_columns = total_lines > 40
+    use_two_columns = total_lines > 45
     # 根据显示模式设置不同宽度（核心修改点）
     if use_two_columns:
         img_width = 1400  # 双列保持原有宽度
