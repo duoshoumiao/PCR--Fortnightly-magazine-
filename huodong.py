@@ -956,7 +956,6 @@ async def draw_half_monthly_report():
     
     # 自动切换双列模式
     use_two_columns = total_lines > 45
-    # 根据显示模式设置不同宽度（核心修改点）
     if use_two_columns:
         img_width = 1400  # 双列保持原有宽度
     else:
@@ -1005,7 +1004,7 @@ async def draw_half_monthly_report():
             y_offset = (total_height - new_height) // 2
             img.paste(bg_img, (x_offset, y_offset))
             
-            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 140))
+            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))
             img = Image.alpha_composite(img, overlay)
         else:
             img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
@@ -1039,7 +1038,7 @@ async def draw_half_monthly_report():
         font_category = ImageFont.load_default()
         font_content = ImageFont.load_default()
 
-    # 绘制标题 - 去掉描边
+    # 绘制标题
     title = "公主连结半月刊"
     try:
         title_width = draw.textlength(title, font=font_title)
@@ -1047,14 +1046,14 @@ async def draw_half_monthly_report():
     except:
         draw.text((50, 50), title, fill=(0, 0, 0))
 
-    # 绘制日期 - 保留描边
+    # 绘制日期
     now = datetime.now()
     date_str = f"{now.year}年{now.month}月{now.day}日"
     try:
         date_width = draw.textlength(date_str, font=font_content)
         x, y = (img_width - date_width) // 2, 100
         
-        # 绘制描边（使用深灰色）
+        # 绘制描边
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 if dx != 0 or dy != 0:
@@ -1126,12 +1125,13 @@ async def draw_half_monthly_report():
                 radius=10, fill=fill_color
             )
             
-            # 绘制分类标题文字 - 添加同色系较深描边
+            # 绘制分类标题文字 - 所有标题上移2像素
             try:
                 text = category
                 text_width = draw.textlength(text, font=font_category)
                 text_x = x_offset + (column_width - text_width) // 2
-                text_y = y + 5
+                # 关键修改：所有标题统一上移2像素（y+5-2）
+                text_y = y + 5 - 2  # 移除了针对"新开专"的条件判断
                 
                 # 计算同色系较深颜色
                 r, g, b = category_colors[category]
@@ -1146,7 +1146,9 @@ async def draw_half_monthly_report():
                 # 绘制主文字
                 draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font_category)
             except:
-                draw.text((x_offset + 20, y + 5), category, fill=(255, 255, 255))
+                # 备用绘制逻辑同样上移2像素
+                text_y = y + 5 - 4
+                draw.text((x_offset + 20, text_y), category, fill=(255, 255, 255))
             
             y += 50
             
@@ -1188,14 +1190,14 @@ async def draw_half_monthly_report():
                             main_color = (0, 0, 0)       # 黑色
                             outline_color = (255, 255, 255)  # 白色描边
                         
-                        # 绘制文本描边
-                        if outline_color:  # 所有文本都添加描边
-                            for dx in [-1, 0, 2]:
-                                for dy in [-1, 0, 2]:
-                                    if dx != 0 or dy != 0:  # 跳过中心位置
+                        # 绘制描边（加宽版本）
+                        if outline_color:
+                            for dx in [-2, -1, 0, 1, 2]:
+                                for dy in [-2, -1, 0, 1, 2]:
+                                    if dx != 0 or dy != 0:
                                         draw.text((x_offset + 20 + dx, y + dy), line, 
                                                  fill=outline_color, font=font_content)
-        
+                        
                         # 绘制主文字
                         draw.text((x_offset + 20, y), line, fill=main_color, font=font_content)
                         y += line_height
