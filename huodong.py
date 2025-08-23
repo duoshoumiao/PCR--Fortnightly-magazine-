@@ -1146,8 +1146,8 @@ async def draw_half_monthly_report():
                 # 绘制主文字
                 draw.text((text_x, text_y), text, fill=(255, 255, 255), font=font_category)
             except:
-                # 备用绘制逻辑同样上移2像素
-                text_y = y + 5 - 4
+                # 备用绘制逻辑同样上移X像素
+                text_y = y + 5 - 5
                 draw.text((x_offset + 20, text_y), category, fill=(255, 255, 255))
             
             y += 50
