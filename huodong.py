@@ -1005,7 +1005,7 @@ async def draw_half_monthly_report():
             y_offset = (total_height - new_height) // 2
             img.paste(bg_img, (x_offset, y_offset))
             
-            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 180))
+            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))
             img = Image.alpha_composite(img, overlay)
         else:
             img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
