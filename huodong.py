@@ -669,14 +669,18 @@ async def get_daily_activity_text():
 def format_activity_status(start_time, end_time, current_time):
     """格式化活动状态"""
     duration = end_time - start_time
-    duration_days = duration // (24 * 3600)
-    duration_hours = (duration % (24 * 3600)) // 3600
+    # 计算天数和小时数（取整数部分）
+    duration_days = int(duration // (24 * 3600))
+    remaining_hours = (duration % (24 * 3600)) // 3600
+    duration_hours = int(remaining_hours)  # 确保取整数
     
+    # 格式化持续时间字符串，只保留整数
     if duration_hours > 0:
         duration_str = f'{duration_days}天{duration_hours}小时'
     else:
         duration_str = f'{duration_days}天'
     
+    # 剩余代码保持不变...
     start_date = datetime.fromtimestamp(start_time)
     start_day = start_date.day
     
