@@ -1005,7 +1005,7 @@ async def draw_half_monthly_report():
             y_offset = (total_height - new_height) // 2
             img.paste(bg_img, (x_offset, y_offset))
             
-            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))
+            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 140))
             img = Image.alpha_composite(img, overlay)
         else:
             img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
@@ -1058,7 +1058,7 @@ async def draw_half_monthly_report():
         for dx in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 if dx != 0 or dy != 0:
-                    draw.text((x+dx, y+dy), date_str, fill=(80, 80, 80), font=font_content)
+                    draw.text((x+dx, y+dy), date_str, fill=(255, 255, 255), font=font_content)
         
         # 绘制主文字
         draw.text((x, y), date_str, fill=(100, 100, 100), font=font_content)
@@ -1186,16 +1186,16 @@ async def draw_half_monthly_report():
                                 outline_color = (0, 100, 0)   # 更深的绿色描边
                         else:
                             main_color = (0, 0, 0)       # 黑色
-                            outline_color = None
+                            outline_color = (255, 255, 255)  # 白色描边
                         
-                        # 绘制倒计时文本的描边
-                        if i == 0 and outline_color:  # 只有倒计时文本添加描边
-                            for dx in [-1, 0, 1]:
-                                for dy in [-1, 0, 1]:
-                                    if dx != 0 or dy != 0:
+                        # 绘制文本描边
+                        if outline_color:  # 所有文本都添加描边
+                            for dx in [-1, 0, 2]:
+                                for dy in [-1, 0, 2]:
+                                    if dx != 0 or dy != 0:  # 跳过中心位置
                                         draw.text((x_offset + 20 + dx, y + dy), line, 
                                                  fill=outline_color, font=font_content)
-                        
+        
                         # 绘制主文字
                         draw.text((x_offset + 20, y), line, fill=main_color, font=font_content)
                         y += line_height
