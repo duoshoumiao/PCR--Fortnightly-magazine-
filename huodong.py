@@ -582,11 +582,12 @@ async def daily_calendar_push():
         sv.logger.error(f"生成推送图片失败: {e}")
 
 async def get_daily_activity_text():
-    """获取日常活动文本内容"""
+    """获取日常活动文本内容，按剩余时间从少到多排序"""
     current_time = time.time()
     msg = '当前进行中的日常活动：\n'
-    has_current_activity = False
     
+    # 收集进行中的活动并计算剩余时间
+    current_activities = []
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
@@ -594,41 +595,55 @@ async def get_daily_activity_text():
         if start_time <= current_time <= end_time:
             sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
             for sub in sub_activities:
+                remaining_time = end_time - current_time  # 进行中活动的剩余时间（距离结束）
                 time_status = format_activity_status(start_time, end_time, current_time)
-                msg += f'\n[{time_status}] \n【{sub}】\n'
-                has_current_activity = True
+                current_activities.append({
+                    'text': f'[{time_status}] \n【{sub}】\n',
+                    'remaining_time': remaining_time
+                })
     
-    if not has_current_activity:
+    # 按剩余时间（距离结束）升序排序
+    current_activities.sort(key=lambda x: x['remaining_time'])
+    if current_activities:
+        for act in current_activities:
+            msg += act['text']
+    else:
         msg += '当前没有进行中的日常活动\n'
     
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     today_end = today_start + 86400
     
-    has_today_upcoming = False
-    today_upcoming_msg = ''
+    # 收集今日即将开始的活动并计算剩余时间
+    today_upcoming_activities = []
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         
         if today_start <= start_time <= today_end and start_time > current_time:
             sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
             for sub in sub_activities:
+                remaining_time = start_time - current_time  # 即将开始活动的剩余时间（距离开始）
                 start_datetime = datetime.fromtimestamp(start_time)
                 start_hour = start_datetime.hour
                 start_minute = start_datetime.minute
-                time_left = start_time - current_time
-                hours_left = int(time_left // 3600)
-                minutes_left = int((time_left % 3600) // 60)
-                today_upcoming_msg += f'\n[今日{start_hour}:{start_minute:02d}开始] (还有{hours_left}小时{minutes_left}分钟)\n【{sub}】\n'
-                has_today_upcoming = True
+                hours_left = int(remaining_time // 3600)
+                minutes_left = int((remaining_time % 3600) // 60)
+                today_upcoming_activities.append({
+                    'text': f'\n[今日{start_hour}:{start_minute:02d}开始] (还有{hours_left}小时{minutes_left}分钟)\n【{sub}】\n',
+                    'remaining_time': remaining_time
+                })
     
-    if has_today_upcoming:
-        msg += '\n今日即将开始的活动：' + today_upcoming_msg
+    # 按剩余时间（距离开始）升序排序
+    today_upcoming_activities.sort(key=lambda x: x['remaining_time'])
+    if today_upcoming_activities:
+        msg += '\n今日即将开始的活动：'
+        for act in today_upcoming_activities:
+            msg += act['text']
     
     tomorrow_start = today_start + 86400
     tomorrow_end = tomorrow_start + 86400
     
-    has_tomorrow_activity = False
-    tomorrow_msg = ''
+    # 收集明日开始的活动（按开始时间排序）
+    tomorrow_activities = []
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         
@@ -636,11 +651,17 @@ async def get_daily_activity_text():
             sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
             for sub in sub_activities:
                 start_hour = datetime.fromtimestamp(start_time).hour
-                tomorrow_msg += f'\n[明日{start_hour}点开始] \n【{sub}】\n'
-                has_tomorrow_activity = True
+                tomorrow_activities.append({
+                    'text': f'\n[明日{start_hour}点开始] \n【{sub}】\n',
+                    'start_time': start_time  # 用开始时间排序
+                })
     
-    if has_tomorrow_activity:
-        msg += '\n明日开始的活动：' + tomorrow_msg
+    # 按开始时间升序排序（从早到晚）
+    tomorrow_activities.sort(key=lambda x: x['start_time'])
+    if tomorrow_activities:
+        msg += '\n明日开始的活动：'
+        for act in tomorrow_activities:
+            msg += act['text']
     
     return msg
 
@@ -1395,6 +1416,8 @@ async def daily_activity(session):
     msg = '当前进行中的日常活动：\n'
     has_current_activity = False
     
+    # 收集当前进行中的活动并计算剩余时间（距结束的时间）
+    current_activities = []
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
@@ -1403,8 +1426,19 @@ async def daily_activity(session):
             sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
             for sub in sub_activities:
                 time_status = format_activity_status(start_time, end_time, current_time)
-                msg += f'\n[{time_status}] \n【{sub}】\n'
+                remaining_time = end_time - current_time  # 剩余时间（距结束）
+                current_activities.append({
+                    'sub': sub,
+                    'time_status': time_status,
+                    'remaining_time': remaining_time
+                })
                 has_current_activity = True
+    
+    # 按剩余时间（距结束）从少到多排序
+    current_activities.sort(key=lambda x: x['remaining_time'])
+    # 拼接排序后的当前活动消息
+    for act in current_activities:
+        msg += f'\n[{act["time_status"]}] \n【{act["sub"]}】\n'
     
     if not has_current_activity:
         msg += '当前没有进行中的日常活动\n'
@@ -1412,8 +1446,8 @@ async def daily_activity(session):
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     today_end = today_start + 86400
     
-    has_today_upcoming = False
-    today_upcoming_msg = ''
+    # 收集今日即将开始的活动并计算剩余时间（距开始的时间）
+    today_upcoming_activities = []
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         
@@ -1423,11 +1457,23 @@ async def daily_activity(session):
                 start_datetime = datetime.fromtimestamp(start_time)
                 start_hour = start_datetime.hour
                 start_minute = start_datetime.minute
-                time_left = start_time - current_time
-                hours_left = int(time_left // 3600)
-                minutes_left = int((time_left % 3600) // 60)
-                today_upcoming_msg += f'\n[今日{start_hour}:{start_minute:02d}开始] (还有{hours_left}小时{minutes_left}分钟)\n【{sub}】\n'
-                has_today_upcoming = True
+                time_left = start_time - current_time  # 剩余时间（距开始）
+                today_upcoming_activities.append({
+                    'sub': sub,
+                    'start_hour': start_hour,
+                    'start_minute': start_minute,
+                    'time_left': time_left,
+                    'hours_left': int(time_left // 3600),
+                    'minutes_left': int((time_left % 3600) // 60)
+                })
+    
+    # 按剩余时间（距开始）从少到多排序
+    today_upcoming_activities.sort(key=lambda x: x['time_left'])
+    # 拼接排序后的今日活动消息
+    has_today_upcoming = len(today_upcoming_activities) > 0
+    today_upcoming_msg = ''
+    for act in today_upcoming_activities:
+        today_upcoming_msg += f'\n[今日{act["start_hour"]}:{act["start_minute"]:02d}开始] (还有{act["hours_left"]}小时{act["minutes_left"]}分钟)\n【{act["sub"]}】\n'
     
     if has_today_upcoming:
         msg += '\n今日即将开始的活动：' + today_upcoming_msg
@@ -1435,8 +1481,8 @@ async def daily_activity(session):
     tomorrow_start = today_start + 86400
     tomorrow_end = tomorrow_start + 86400
     
-    has_tomorrow_activity = False
-    tomorrow_msg = ''
+    # 收集明日活动并按开始时间排序
+    tomorrow_activities = []
     for activity in data:
         start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
         
@@ -1444,8 +1490,19 @@ async def daily_activity(session):
             sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
             for sub in sub_activities:
                 start_hour = datetime.fromtimestamp(start_time).hour
-                tomorrow_msg += f'\n[明日{start_hour}点开始] \n【{sub}】\n'
-                has_tomorrow_activity = True
+                tomorrow_activities.append({
+                    'sub': sub,
+                    'start_hour': start_hour,
+                    'start_time': start_time  # 用于排序
+                })
+    
+    # 按开始时间从早到晚排序（等同于剩余时间从少到多）
+    tomorrow_activities.sort(key=lambda x: x['start_time'])
+    # 拼接排序后的明日活动消息
+    has_tomorrow_activity = len(tomorrow_activities) > 0
+    tomorrow_msg = ''
+    for act in tomorrow_activities:
+        tomorrow_msg += f'\n[明日{act["start_hour"]}点开始] \n【{act["sub"]}】\n'
     
     if has_tomorrow_activity:
         msg += '\n明日开始的活动：' + tomorrow_msg
