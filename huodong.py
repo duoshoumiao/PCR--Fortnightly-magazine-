@@ -680,24 +680,23 @@ def format_activity_status(start_time, end_time, current_time):
     else:
         duration_str = f'{duration_days}天'
     
-    # 剩余代码保持不变...
     start_date = datetime.fromtimestamp(start_time)
     start_day = start_date.day
     
     if current_time < start_time:
         delta = start_time - current_time
         time_str = format_countdown(delta, is_future=True)
-        return f'开始倒计时: {time_str}（{start_day}号开始,持续{duration_str}）'
+        return f'• 开始倒计时: {time_str}（{start_day}号开始,持续{duration_str}）'
     else:
         delta = end_time - current_time
         if delta > 0:
             time_str = format_countdown(delta, is_future=False)
             if delta < 2 * 24 * 3600:  # 小于2天
-                return f'剩余时间: {time_str}（即将结束）'
+                return f'• 剩余时间: {time_str}（即将结束）'
             else:
-                return f'剩余时间: {time_str}'
+                return f'• 剩余时间: {time_str}'
         else:
-            return f'已结束（持续{duration_str}）'
+            return f'• 已结束（持续{duration_str}）'
 
 def format_countdown(seconds, is_future=True):
     """格式化倒计时"""
@@ -1158,6 +1157,7 @@ async def draw_half_monthly_report():
             
             # 绘制活动内容 - 添加半透明白色背景
             for activity in activities:
+                y += 10  # 增加项间垂直间距（像素单位）
                 lines = activity.split('\n')
                 icons_list = []
                 
