@@ -1175,15 +1175,15 @@ async def draw_half_monthly_report():
                     if line.strip():
                         # 确定颜色
                         if i == 0 and '开始倒计时' in line:
-                            main_color = (255, 200, 50)  # 亮橙色
-                            outline_color = (180, 120, 0)  # 深橙色描边
+                            main_color = (240, 200, 50)  # 亮橙色
+                            outline_color = (120, 80, 0)  # 更深的橙色描边
                         elif i == 0 and '剩余时间' in line:
                             if '（即将结束）' in line:  # 小于2天的情况
                                 main_color = (255, 100, 100)  # 亮红色
-                                outline_color = (180, 0, 0)    # 深红色描边
+                                outline_color = (120, 0, 0)    # 更深的红色描边
                             else:
                                 main_color = (100, 255, 100)  # 亮绿色
-                                outline_color = (0, 150, 0)   # 深绿色描边
+                                outline_color = (0, 100, 0)   # 更深的绿色描边
                         else:
                             main_color = (0, 0, 0)       # 黑色
                             outline_color = None
