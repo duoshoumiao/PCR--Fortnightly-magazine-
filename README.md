@@ -4,6 +4,8 @@ hoshino v1 插件  Linux系统没运行过，字体不全的需自行把simsun.t
 
 自主更改bg_dir = "C:/Resources/img/benzi/"行背景文件夹路径即可
 
+1008行             overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))  第四位参数自行调整背景透明度
+
 【更新半月刊】更新半月刊，服务器记得开放端口HTTPS（443）能手动更新就能自动更新
 
 【半月刊】：完整图片版
