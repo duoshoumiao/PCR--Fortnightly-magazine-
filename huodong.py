@@ -1155,9 +1155,9 @@ async def draw_half_monthly_report():
             
             y += 50
             
-            # 绘制活动内容 - 添加半透明白色背景
+            # 绘制活动内容 - 添加带圆角和阴影的半透透明白色背景
             for activity in activities:
-                y += 10  # 增加项间垂直间距（像素单位）
+                y += 15  # 增加项间垂直间距（像素素单位）
                 lines = activity.split('\n')
                 icons_list = []
                 
@@ -1168,13 +1168,42 @@ async def draw_half_monthly_report():
                     processed_lines.append(processed_line)
                     icons_list.append(icons)
                 
-                # 为活动内容添加半透明背景
+                # 计算内容高度
                 content_height = len(processed_lines) * line_height
                 if any(icons_list):
                     content_height += icon_line_height
                 
-                content_bg = Image.new('RGBA', (column_width, content_height + 20), (255, 255, 255, 180))
+                # 圆角半径
+                radius = 10
+                # 阴影颜色和偏移
+                shadow_color = (100, 100, 100, 80)  # 半透明灰色
+                shadow_offset = 3  # 阴影偏移量
+                
+                # 创建带阴影和圆角的背景
+                # 1. 先创建阴影（稍微偏移并大于主背景）
+                shadow_img = Image.new('RGBA', (column_width + shadow_offset, content_height + 20 + shadow_offset), (0, 0, 0, 0))
+                shadow_draw = ImageDraw.Draw(shadow_img)
+                # 绘制阴影圆角矩形
+                shadow_draw.rounded_rectangle(
+                    [0, shadow_offset, column_width, content_height + 20 + shadow_offset],
+                    radius=radius,
+                    fill=shadow_color
+                )
+                
+                # 2. 创建主背景（带圆角的半透明白色）
+                content_bg = Image.new('RGBA', (column_width, content_height + 20), (0, 0, 0, 0))
+                bg_draw = ImageDraw.Draw(content_bg)
+                # 绘制主背景圆角矩形
+                bg_draw.rounded_rectangle(
+                    [0, 0, column_width, content_height + 20],
+                    radius=radius,
+                    fill=(255, 255, 255, 180)
+                )
+                
+                # 3. 先粘贴阴影，再粘贴主背景，保持持原有原有位置不变
+                img.paste(shadow_img, (x_offset, y), shadow_img)
                 img.paste(content_bg, (x_offset, y), content_bg)
+
                 
                 # 绘制文本 - 倒计时使用同色系较深描边
                 for i, line in enumerate(processed_lines):
