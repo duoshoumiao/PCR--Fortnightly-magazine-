@@ -1,6 +1,6 @@
 # PCR-Fortnightly-magazine 一个会自动更新的半月刊
 公主连结半月刊
-hoshino v1 插件  Linux系统没运行过，字体不全需自行补充
+hoshino v1 插件  Linux系统没运行过，字体不全的需自行把simsun.ttc放入fonts
 
 自主更改bg_dir = "C:/Resources/img/benzi/"行背景文件夹路径即可
 
