@@ -1155,9 +1155,9 @@ async def draw_half_monthly_report():
             
             y += 50
             
-            # 绘制活动内容 - 添加带圆角和阴影的半透透明白色背景
+                        # 绘制活动内容 - 添加带底部阴影的圆角透明背景
             for activity in activities:
-                y += 15  # 增加项间垂直间距（像素素单位）
+                y += 15  # 增加项间垂直间距（像素单位）
                 lines = activity.split('\n')
                 icons_list = []
                 
@@ -1174,35 +1174,45 @@ async def draw_half_monthly_report():
                     content_height += icon_line_height
                 
                 # 圆角半径
-                radius = 10
-                # 阴影颜色和偏移
-                shadow_color = (100, 100, 100, 80)  # 半透明灰色
-                shadow_offset = 3  # 阴影偏移量
+                radius = 30
+                # 底部阴影参数
+                shadow_color = (100, 100, 100, 140)  # 半透明灰色
+                shadow_height = 5  # 阴影高度
+                shadow_blur = 2   # 阴影模糊程度
                 
-                # 创建带阴影和圆角的背景
-                # 1. 先创建阴影（稍微偏移并大于主背景）
-                shadow_img = Image.new('RGBA', (column_width + shadow_offset, content_height + 20 + shadow_offset), (0, 0, 0, 0))
-                shadow_draw = ImageDraw.Draw(shadow_img)
-                # 绘制阴影圆角矩形
-                shadow_draw.rounded_rectangle(
-                    [0, shadow_offset, column_width, content_height + 20 + shadow_offset],
-                    radius=radius,
-                    fill=shadow_color
-                )
-                
-                # 2. 创建主背景（带圆角的半透明白色）
+                # 1. 创建主背景（带圆角的半透明白色）
                 content_bg = Image.new('RGBA', (column_width, content_height + 20), (0, 0, 0, 0))
                 bg_draw = ImageDraw.Draw(content_bg)
-                # 绘制主背景圆角矩形
                 bg_draw.rounded_rectangle(
                     [0, 0, column_width, content_height + 20],
                     radius=radius,
                     fill=(255, 255, 255, 180)
                 )
                 
-                # 3. 先粘贴阴影，再粘贴主背景，保持持原有原有位置不变
-                img.paste(shadow_img, (x_offset, y), shadow_img)
+                # 2. 创建底部阴影（仅底部一条）
+                shadow_img = Image.new('RGBA', (column_width, shadow_height + shadow_blur), (0, 0, 0, 0))
+                shadow_draw = ImageDraw.Draw(shadow_img)
+                
+                # 绘制底部阴影（使用渐变效果增强真实感）
+                for i in range(shadow_height + shadow_blur):
+                    # 透明度随高度增加而降低
+                    alpha = int(shadow_color[3] * (1 - i / (shadow_height + shadow_blur)))
+                    current_color = (shadow_color[0], shadow_color[1], shadow_color[2], alpha)
+                    # 绘制阴影线条，左右两边稍短以配合圆角
+                    shadow_draw.line(
+                        [
+                            (radius//2 + i//2, i), 
+                            (column_width - radius//2 - i//2, i)
+                        ],
+                        fill=current_color,
+                        width=1
+                    )
+                
+                # 3. 先粘贴主背景，再粘贴底部阴影
                 img.paste(content_bg, (x_offset, y), content_bg)
+                # 阴影位置在主背景底部
+                img.paste(shadow_img, (x_offset, y + content_height + 20 - shadow_blur//2), shadow_img)
+    
 
                 
                 # 绘制文本 - 倒计时使用同色系较深描边
