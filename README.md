@@ -56,7 +56,7 @@ hoshino v1 插件  Linux系统没运行过，字体不全的需自行把simsun.t
 
 更新日志
 
-2025/08/23 优化排序
+2025/08/23 优化排序，风格优化
 
 2025/08/21 补全功能头像显示
 
@@ -74,7 +74,7 @@ hoshino v1 插件  Linux系统没运行过，字体不全的需自行把simsun.t
 
 2025/07/10 更新自动更新
 
-<img width="1400" height="2325" alt="199b3c864ff00c0d9674ff152e49d676" src="https://github.com/user-attachments/assets/2d4eed5f-e93f-43a9-9a59-4ebe34b26598" />
+<img width="1400" height="2325" alt="326adc059f965891acd4c47d8669ae91" src="https://github.com/user-attachments/assets/9b086331-0ed4-4c5b-958b-ae815f87fc0e" />
 <img width="457" height="753" alt="image" src="https://github.com/user-attachments/assets/9ddc6fdf-675d-4d8e-97b5-646e8ad298f9" />
 <img width="465" height="589" alt="image" src="https://github.com/user-attachments/assets/e10cdd2c-c565-4d23-b835-291581dd8ab0" />
 <img width="454" height="630" alt="image" src="https://github.com/user-attachments/assets/b10339e1-e081-4a5d-9207-8d5fa1f96819" />
