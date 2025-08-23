@@ -1167,7 +1167,7 @@ async def draw_half_monthly_report():
                 if any(icons_list):
                     content_height += icon_line_height
                 
-                content_bg = Image.new('RGBA', (column_width, content_height + 20), (255, 255, 255, 100))
+                content_bg = Image.new('RGBA', (column_width, content_height + 20), (255, 255, 255, 180))
                 img.paste(content_bg, (x_offset, y), content_bg)
                 
                 # 绘制文本 - 倒计时使用同色系较深描边
