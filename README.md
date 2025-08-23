@@ -68,7 +68,7 @@ hoshino v1 插件  Linux系统没运行过，字体不全的需自行把simsun.t
 
 2025/07/10 更新自动更新
 
-<img width="1400" height="1700" alt="0c83f54ed0210fab858fc386c3a6952d" src="https://github.com/user-attachments/assets/1352cb76-2d42-40df-af10-79220e9e7684" />
+<img width="1400" height="2325" alt="199b3c864ff00c0d9674ff152e49d676" src="https://github.com/user-attachments/assets/2d4eed5f-e93f-43a9-9a59-4ebe34b26598" />
 <img width="457" height="753" alt="image" src="https://github.com/user-attachments/assets/9ddc6fdf-675d-4d8e-97b5-646e8ad298f9" />
 <img width="465" height="589" alt="image" src="https://github.com/user-attachments/assets/e10cdd2c-c565-4d23-b835-291581dd8ab0" />
 <img width="454" height="630" alt="image" src="https://github.com/user-attachments/assets/b10339e1-e081-4a5d-9207-8d5fa1f96819" />
