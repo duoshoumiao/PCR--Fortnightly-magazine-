@@ -1,5 +1,4 @@
 from hoshino import priv
-from .safeservice import SafeService
 import time
 from datetime import datetime, timedelta
 import os
@@ -23,7 +22,7 @@ from hoshino.service import Service as sv
 from hoshino import logger, get_bot
 
 
-sv = SafeService(
+sv = Service(
     '半月刊', 
     enable_on_default=False, 
     bundle='半月刊', 
