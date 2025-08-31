@@ -56,6 +56,8 @@ content_bg = Image.new('RGBA', (column_width, content_height + 20), (255, 255, 2
 
 更新日志
 
+2025/08/31 内容超边调整
+
 2025/08/23 优化排序，风格优化
 
 2025/08/21 补全功能头像显示
