@@ -2,7 +2,11 @@
 公主连结半月刊
 hoshino v1 插件  Linux系统没运行过，字体不全的需自行把simsun.ttc放入fonts
 
-自主更改bg_dir = "C:/Resources/img/benzi/"行背景文件夹路径即可
+----------------------------------------
+！！！每个人R.img不一样，请自主更改
+bg_dir = "C:/Resources/img/benzi/"
+行背景文件夹路径即可
+----------------------------------------
 
 overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))  第四位参数自行调整背景透明度，100 越高越透明
 
