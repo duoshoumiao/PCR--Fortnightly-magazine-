@@ -37,7 +37,8 @@ sv = Service(
 【新开专】 - 新开专武信息
 【斗技场】 - 斗技场信息
 【庆典活动】 - 庆典和双倍活动
-【sp地下城】 - sp地下城
+【sp地下城】 - 活动时间
+【深渊讨伐战】 - s活动时间
 【开启每日推送】 - 开启每日5:30的活动推送
 【关闭每日推送】 - 关闭每日推送
 【更新半月刊】
@@ -917,6 +918,8 @@ def classify_activity(activity_name):
         return "公会战"
     elif 'sp地下城' in activity_name:
         return "sp地下城"
+    elif '深渊讨伐战' in activity_name or '深渊' in activity_name:
+        return "深渊讨伐战"
     elif '新专1' in activity_name or '新专2' in activity_name:
         return "新开专"
     elif '斗技场' in activity_name or '斗技场开启' in activity_name:
@@ -933,6 +936,7 @@ async def draw_half_monthly_report():
         "卡池": [],
         "露娜塔": [],
         "sp地下城": [],
+        "深渊讨伐战": [],
         "免费十连": [],
         "公会战": [],
         "新开专": [],
@@ -1735,6 +1739,24 @@ async def dungeon(session):
     msg = msg if len(msg) > len('地下城活动：\n') else msg + '当前没有地下城活动'
     img = await draw_text_image_with_icons("地下城活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+   
+@sv.on_command('深渊', aliases=('讨伐战', '深渊讨伐战'))
+async def dungeon(session):
+    current_time = time.time()
+    msg = '深渊讨伐战：\n'
+    for activity in data:
+        start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
+        end_time = datetime.strptime(activity['结束时间'], "%Y/%m/%d %H").timestamp()
+        
+        sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
+        for sub in sub_activities:
+            if '深渊讨伐战' in sub:
+                time_status = format_activity_status(start_time, end_time, current_time)
+                msg += f'\n[{time_status}] \n【{sub}】\n'
+    
+    msg = msg if len(msg) > len('深渊讨伐战：\n') else msg + '当前没有深渊讨伐战活动'
+    img = await draw_text_image_with_icons("深渊讨伐战", msg)
+    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")   
 
 
 
