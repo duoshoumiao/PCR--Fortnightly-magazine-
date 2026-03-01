@@ -1019,7 +1019,7 @@ async def draw_half_monthly_report():
             try:  
                 base = int(cid)  
                 card_id_candidates.append(str(base * 100 + 61))  # 先试6星  
-                card_id_candidates.append(str(base * 100 + 31))  # 再试1星  
+                card_id_candidates.append(str(base * 100 + 31))  # 再试3星  
             except:  
                 pass  
         # 保底fallback  
