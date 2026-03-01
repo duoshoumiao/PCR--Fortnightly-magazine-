@@ -999,41 +999,93 @@ async def draw_half_monthly_report():
     total_height = max(600, min(total_height, 3000))
     column_width = img_width // 2 - 70 if use_two_columns else img_width - 100
 
-    # 创建画布
-    try:
-        bg_dir = "C:/Resources/img/benzi/"
-        bg_files = [f for f in os.listdir(bg_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        if bg_files:
-            random_bg = random.choice(bg_files)
-            bg_img = Image.open(os.path.join(bg_dir, random_bg)).convert('RGBA')
-            
-            bg_width, bg_height = bg_img.size
-            target_ratio = img_width / total_height
-            bg_ratio = bg_width / bg_height
-            
-            if bg_ratio > target_ratio:
-                new_height = total_height
-                new_width = int(bg_width * (new_height / bg_height))
-            else:
-                new_width = img_width
-                new_height = int(bg_height * (new_width / bg_width))
-            
-            bg_img = bg_img.resize((new_width, new_height), Image.LANCZOS)
-            
-            img = Image.new('RGBA', (img_width, total_height), (0, 0, 0, 0))
-            x_offset = (img_width - new_width) // 2
-            y_offset = (total_height - new_height) // 2
-            img.paste(bg_img, (x_offset, y_offset))
-            
-            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))
-            img = Image.alpha_composite(img, overlay)
-        else:
-            img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
-    except Exception as e:
-        sv.logger.error(f"背景加载失败: {e}")
-        img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
-    
-    draw = ImageDraw.Draw(img)
+    # 创建画布  
+    import tempfile  
+    _bg_tmp_path = None  
+    try:  
+        # 从活动数据中自动提取角色ID  
+        all_char_ids = []  
+        for activity in data:  
+            found = re.findall(r'\d{4,6}', activity.get('活动名', ''))  
+            all_char_ids.extend(found)  
+  
+        # 去重并打乱，每个ID先试61再试31  
+        unique_ids = list(dict.fromkeys(all_char_ids))  # 去重保持顺序  
+        random.shuffle(unique_ids)  
+  
+        # 构建候选列表：每个ID先61后31  
+        card_id_candidates = []  
+        for cid in unique_ids:  
+            try:  
+                base = int(cid)  
+                card_id_candidates.append(str(base * 100 + 61))  # 先试6星  
+                card_id_candidates.append(str(base * 100 + 31))  # 再试1星  
+            except:  
+                pass  
+        # 保底fallback  
+        card_id_candidates.append("100161")  
+        card_id_candidates.append("100131")  
+  
+        headers = {  
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",  
+            "Referer": "https://redive.estertion.win/",  
+        }  
+  
+        bg_img = None  
+        for card_id in card_id_candidates:  
+            url = f"https://redive.estertion.win/card/full/{card_id}.webp"  
+            try:  
+                resp = requests.get(url, headers=headers, timeout=10)  
+                resp.raise_for_status()  
+                with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as tmp:  
+                    _bg_tmp_path = tmp.name  
+                    tmp.write(resp.content)  
+                bg_img = Image.open(_bg_tmp_path).convert('RGBA')  
+                sv.logger.info(f"背景图加载成功: {url}")  
+                break  
+            except Exception as e:  
+                sv.logger.warning(f"背景图 {card_id} 加载失败({e})，尝试下一个")  
+                if _bg_tmp_path and os.path.exists(_bg_tmp_path):  
+                    try:  
+                        os.remove(_bg_tmp_path)  
+                    except:  
+                        pass  
+                _bg_tmp_path = None  
+  
+        if bg_img:  
+            bg_width, bg_height = bg_img.size  
+            target_ratio = img_width / total_height  
+            bg_ratio = bg_width / bg_height  
+  
+            if bg_ratio > target_ratio:  
+                new_height = total_height  
+                new_width = int(bg_width * (new_height / bg_height))  
+            else:  
+                new_width = img_width  
+                new_height = int(bg_height * (new_width / bg_width))  
+  
+            bg_img = bg_img.resize((new_width, new_height), Image.LANCZOS)  
+  
+            img = Image.new('RGBA', (img_width, total_height), (0, 0, 0, 0))  
+            x_offset = (img_width - new_width) // 2  
+            y_offset = (total_height - new_height) // 2  
+            img.paste(bg_img, (x_offset, y_offset))  
+  
+            overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))  
+            img = Image.alpha_composite(img, overlay)  
+        else:  
+            img = Image.new('RGB', (img_width, total_height), (240, 240, 245))  
+    except Exception as e:  
+        sv.logger.error(f"背景加载失败: {e}")  
+        img = Image.new('RGB', (img_width, total_height), (240, 240, 245))  
+    finally:  
+        if _bg_tmp_path and os.path.exists(_bg_tmp_path):  
+            try:  
+                os.remove(_bg_tmp_path)  
+            except Exception as e:  
+                sv.logger.error(f"清理背景缓存失败: {e}")  
+  
+    draw = ImageDraw.Draw(img)  # ← 必须在 draw_column 定义之前
 
     # 加载字体
     try:
