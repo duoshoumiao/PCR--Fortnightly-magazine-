@@ -646,7 +646,7 @@ async def get_daily_activity_text():
         today_upcoming_msg += f'\n[今日{act["start_hour"]}:{act["start_minute"]:02d}开始] (还有{act["hours_left"]}小时{act["minutes_left"]}分钟)\n【{act["sub"]}】\n'
     
     if has_today_upcoming:
-        msg += '\n今日即将开始的活动：' + today_upcoming_msg
+        msg += '\n■■■■■■■■■■■■■■■■■■■■■■■ ■ ■■■■■■■■■■■■■■■■■■■■■■■\n\n今日即将开始的活动：' + today_upcoming_msg
     
     tomorrow_start = today_start + 86400
     tomorrow_end = tomorrow_start + 86400
@@ -675,7 +675,7 @@ async def get_daily_activity_text():
         tomorrow_msg += f'\n[明日{act["start_hour"]}点开始] \n【{act["sub"]}】\n'
     
     if has_tomorrow_activity:
-        msg += '\n明日开始的活动：' + tomorrow_msg
+        msg += '\n■■■■■■■■■■■■■■■■■■■■■■■ ■ ■■■■■■■■■■■■■■■■■■■■■■■\n\n明日开始的活动：' + tomorrow_msg
     
     return msg
 
@@ -1582,7 +1582,7 @@ async def daily_activity(session):
         today_upcoming_msg += f'\n[今日{act["start_hour"]}:{act["start_minute"]:02d}开始] (还有{act["hours_left"]}小时{act["minutes_left"]}分钟)\n【{act["sub"]}】\n'
     
     if has_today_upcoming:
-        msg += '\n今日即将开始的活动：' + today_upcoming_msg
+        msg += '\n■■■■■■■■■■■■■■■■■■■■■■■ ■ ■■■■■■■■■■■■■■■■■■■■■■■\n\n今日即将开始的活动：' + today_upcoming_msg
     
     tomorrow_start = today_start + 86400
     tomorrow_end = tomorrow_start + 86400
@@ -1611,7 +1611,7 @@ async def daily_activity(session):
         tomorrow_msg += f'\n[明日{act["start_hour"]}点开始] \n【{act["sub"]}】\n'
     
     if has_tomorrow_activity:
-        msg += '\n明日开始的活动：' + tomorrow_msg
+        msg += '\n■■■■■■■■■■■■■■■■■■■■■■■ ■ ■■■■■■■■■■■■■■■■■■■■■■■\n\n明日开始的活动：' + tomorrow_msg
     
     img = await draw_text_image_with_icons("日常活动", msg)
     await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
