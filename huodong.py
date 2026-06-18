@@ -48,7 +48,7 @@ sv = Service(
 【订阅活动 类别】- 订阅某个类别的活动提醒，例如"订阅活动 免费十连"（在当前群生效，活动前15分钟提醒）
 【取消订阅 类别】- 取消某个类别的活动订阅（在当前群生效）
 【我的订阅】- 查看自己在当前群的订阅活动类别
-【群订阅活动 类别】- 群内订阅某个类别的活动提醒（管理员可用，活动前一天@全体成员）
+【群订阅活动 类别】- 群内订阅某个类别的活动提醒（管理员可用，@全体成员）
 【群取消订阅 类别】- 取消群内某个类别的活动订阅（管理员可用）
 【本群订阅】- 查看本群订阅的活动类别
 '''.strip()
@@ -379,7 +379,7 @@ async def check_upcoming_activities():
     current_time = time.time()
     # 时间窗口设置：个人订阅15分钟内，群订阅提前1天
     PERSONAL_NOTIFY_WINDOW = 15 * 60  # 15分钟
-    GROUP_NOTIFY_WINDOW = 24 * 3600   # 1天（24小时）
+    GROUP_NOTIFY_WINDOW = 24 * 3600   # 小时
     bot = get_bot()
     
     # 记录已经通知过的活动，避免重复通知，区分个人和群通知
@@ -540,15 +540,15 @@ async def enable_daily_push(session):
     PushConfig.set_group(group_id, True)
     await session.send("✅ 已开启本群每日5:30的活动推送")
 
-@sv.on_command('关闭每日推送')
-async def disable_daily_push(session):
-    """关闭本群每日推送"""
-    if not priv.check_priv(session.event, priv.ADMIN):
-        await session.send("⚠️ 需要管理员权限")
-        return
-    
-    group_id = session.event.group_id
-    PushConfig.set_group(group_id, False)
+@sv.on_command('关闭每日推送')  
+async def disable_daily_push(session):  
+    """关闭本群每日推送"""  
+    if not priv.check_priv(session.event, priv.ADMIN):  
+        await session.send("⚠️ 需要管理员权限")  
+        return  
+  
+    group_id = session.event.group_id  
+    disable_daily_push_for_group(group_id)  
     await session.send("✅ 已关闭本群每日活动推送")
 
 # ========== 定时推送任务 ==========
