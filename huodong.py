@@ -540,16 +540,15 @@ async def enable_daily_push(session):
     PushConfig.set_group(group_id, True)
     await session.send("✅ 已开启本群每日5:30的活动推送")
 
-@sv.on_command('关闭每日推送')  
-async def disable_daily_push(session):  
-    """关闭本群每日推送"""  
-    if not priv.check_priv(session.event, priv.ADMIN):  
-        await session.send("⚠️ 需要管理员权限")  
-        return  
-  
-    group_id = session.event.group_id  
-    disable_daily_push_for_group(group_id)  
-    await session.send("✅ 已关闭本群每日活动推送")
+@sv.on_command('关闭每日推送')
+async def disable_daily_push(session):
+    """关闭本群每日推送"""
+    if not priv.check_priv(session.event, priv.ADMIN):
+        await session.send("⚠️ 需要管理员权限")
+        return
+    
+    group_id = session.event.group_id
+    PushConfig.set_group(group_id, False)
 
 # ========== 定时推送任务 ==========
 @scheduler.scheduled_job('cron', hour=5, minute=30)
