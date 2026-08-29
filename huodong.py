@@ -803,50 +803,76 @@ def calculate_data_hash(data):
     data_str = json.dumps(data, sort_keys=True)
     return hashlib.md5(data_str.encode('utf-8')).hexdigest()
 
-# 修改更新函数，返回是否有更新
-async def update_half_monthly_data():
-    global data, last_data_hash
-    
-    try:
-        github_url = "https://raw.githubusercontent.com/duoshoumiao/PCR--Fortnightly-magazine-/main/data.json"
-        response = requests.get(github_url, timeout=15)
-        response.raise_for_status()
-        
-        # 验证JSON格式
-        try:
-            new_data = json.loads(response.text)
-        except json.JSONDecodeError:
-            sv.logger.error("下载的数据不是有效的JSON格式")
-            return False
-            
-        # 计算新数据的哈希
-        new_hash = calculate_data_hash(new_data)
-        
-        # 如果没有变化
-        if new_hash == last_data_hash:
-            sv.logger.info("数据无变化，无需更新")
-            return False
-            
-        # 创建备份
-        backup_path = DATA_FILE.with_suffix('.json.bak')
-        if DATA_FILE.exists():
-            import shutil
-            shutil.copy2(DATA_FILE, backup_path)
-        
-        # 保存新文件
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            f.write(response.text)
-        
-        # 更新全局变量
-        data = new_data
-        last_data_hash = new_hash
-        
-        sv.logger.info(f"✅ 半月刊数据更新成功！已加载 {len(data)} 条活动数据")
-        return True
-        
-    except Exception as e:
-        sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
-        return False
+# 修改更新函数，返回状态: "updated" / "no_change" / "error"  
+# 多镜像 + 重试 + 非阻塞下载  
+DATA_URLS = [  
+    "https://raw.githubusercontent.com/duoshoumiao/PCR--Fortnightly-magazine-/main/data.json",  
+    "https://ghproxy.net/https://raw.githubusercontent.com/duoshoumiao/PCR--Fortnightly-magazine-/main/data.json",  
+    "https://cdn.jsdelivr.net/gh/duoshoumiao/PCR--Fortnightly-magazine-@main/data.json",  
+    "https://fastly.jsdelivr.net/gh/duoshoumiao/PCR--Fortnightly-magazine-@main/data.json",  
+]  
+  
+async def _download_data_text():  
+    """依次尝试多个镜像下载 data.json，成功返回文本，全部失败抛出最后一次异常。"""  
+    loop = asyncio.get_event_loop()  
+    last_err = None  
+    for url in DATA_URLS:  
+        for attempt in range(2):  # 每个源最多重试 2 次  
+            try:  
+                resp = await loop.run_in_executor(  
+                    None, lambda u=url: requests.get(u, timeout=15))  
+                resp.raise_for_status()  
+                sv.logger.info(f"✅ 成功从 {url} 下载数据")  
+                return resp.text  
+            except Exception as e:  
+                last_err = e  
+                sv.logger.warning(f"下载失败({url}) 第{attempt + 1}次: {str(e)}")  
+    raise last_err if last_err else RuntimeError("所有下载源均失败")  
+  
+async def update_half_monthly_data():  
+    global data, last_data_hash  
+  
+    try:  
+        text = await _download_data_text()  
+    except Exception as e:  
+        sv.logger.error(f"更新半月刊数据时网络出错: {str(e)}")  
+        return "error"  
+  
+    # 验证JSON格式  
+    try:  
+        new_data = json.loads(text)  
+    except json.JSONDecodeError:  
+        sv.logger.error("下载的数据不是有效的JSON格式")  
+        return "error"  
+  
+    # 计算新数据的哈希  
+    new_hash = calculate_data_hash(new_data)  
+  
+    # 如果没有变化  
+    if new_hash == last_data_hash:  
+        sv.logger.info("数据无变化，无需更新")  
+        return "no_change"  
+  
+    try:  
+        # 创建备份  
+        backup_path = DATA_FILE.with_suffix('.json.bak')  
+        if DATA_FILE.exists():  
+            import shutil  
+            shutil.copy2(DATA_FILE, backup_path)  
+  
+        # 保存新文件  
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:  
+            f.write(text)  
+  
+        # 更新全局变量  
+        data = new_data  
+        last_data_hash = new_hash  
+  
+        sv.logger.info(f"✅ 半月刊数据更新成功！已加载 {len(data)} 条活动数据")  
+        return "updated"  
+    except Exception as e:  
+        sv.logger.error(f"写入半月刊数据时出错: {str(e)}")  
+        return "error"
 
 # 每小时检查更新的定时任务（不发送通知）
 @scheduler.scheduled_job('cron', hour='*')
@@ -858,12 +884,14 @@ async def auto_update_half_monthly():
             last_data_hash = calculate_data_hash(data)
         
         sv.logger.info("⏳⏳⏳⏳⏳⏳⏳⏳⏳ 开始自动检查半月刊更新...")
-        has_update = await update_half_monthly_data()
-        
-        if has_update:
-            sv.logger.info("🔔🔔🔔🔔 检测到半月刊数据有更新")
-        else:
-            sv.logger.info("🔄🔄🔄🔄 半月刊数据无更新")
+        status = await update_half_monthly_data()  
+  
+        if status == "updated":  
+            sv.logger.info("🔔🔔🔔🔔 检测到半月刊数据有更新")  
+        elif status == "no_change":  
+            sv.logger.info("🔄🔄🔄🔄 半月刊数据无更新")  
+        else:  # error  
+            sv.logger.error("❌ 半月刊自动更新失败（网络或数据错误）")
             
     except Exception as e:
         sv.logger.error(f"自动更新半月刊时出错: {str(e)}")
@@ -878,14 +906,17 @@ async def update_half_monthly(session):
 
         msg_id = (await session.send("⏳⏳⏳⏳⏳⏳⏳⏳⏳ 正在更新半月刊数据，请稍候..."))['message_id']
         
-        has_update = await update_half_monthly_data()
-        
-        if has_update:
-            await session.send("✅ 半月刊数据更新成功！\n"
-                             f"已加载 {len(data)} 条活动数据\n"
-                             "可以使用【半月刊】命令查看最新内容")
-        else:
-            await session.send("🔄🔄 半月刊更新失败，可能半月刊已经最新")
+        status = await update_half_monthly_data()  
+  
+        if status == "updated":  
+            await session.send("✅ 半月刊数据更新成功！\n"  
+                             f"已加载 {len(data)} 条活动数据\n"  
+                             "可以使用【半月刊】命令查看最新内容")  
+        elif status == "no_change":  
+            await session.send("✅ 当前已是最新，无需更新")  
+        else:  # error  
+            await session.send("❌ 更新失败：网络错误，已尝试多个下载源。\n"  
+                             "请检查服务器网络或稍后重试。")
             
     except Exception as e:
         sv.logger.error(f"更新半月刊数据时出错: {str(e)}")
