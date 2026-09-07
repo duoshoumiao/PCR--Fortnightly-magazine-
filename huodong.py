@@ -48,7 +48,7 @@ sv = Service(
 【订阅活动 类别】- 订阅某个类别的活动提醒，例如"订阅活动 免费十连"（在当前群生效，活动前15分钟提醒）
 【取消订阅 类别】- 取消某个类别的活动订阅（在当前群生效）
 【我的订阅】- 查看自己在当前群的订阅活动类别
-【群订阅活动 类别】- 群内订阅某个类别的活动提醒（管理员可用，@全体成员）
+【群订阅活动 类别】- 群内订阅某个类别的活动提醒，需要开启每日他推送（管理员可用，@全体成员）
 【群取消订阅 类别】- 取消群内某个类别的活动订阅（管理员可用）
 【本群订阅】- 查看本群订阅的活动类别
 '''.strip()
@@ -308,7 +308,7 @@ async def my_subscribes(session):
 # 添加群订阅相关命令
 @sv.on_command('群订阅活动')
 async def group_subscribe_activity(session):
-    """群订阅活动类别（管理员可用），例如：群订阅活动 免费十连（活动前一天@全体成员）"""
+    """群订阅活动类别（管理员可用），例如：群订阅活动 免费十连（活动前半天@全体成员）"""
     if not priv.check_priv(session.event, priv.ADMIN):
         await session.send("⚠️ 需要管理员权限才能设置群订阅")
         return
@@ -328,7 +328,7 @@ async def group_subscribe_activity(session):
     success = GroupSubscribeConfig.add_subscribe(group_id, args)
     
     if success:
-        await session.send(f"本群已成功订阅【{args}】类活动，活动开始前一天会@全体成员提醒~")
+        await session.send(f"本群已成功订阅【{args}】类活动，活动开始前半天会@全体成员提醒~")
     else:
         await session.send(f"本群已经订阅过【{args}】类活动了哦~")
 
@@ -368,124 +368,101 @@ async def group_subscribe_list(session):
     else:
         await session.send(f"本群当前订阅的活动类别：\n" + "\n".join(subscribes))
 
-# 修改定时检查频率为每3分钟一次（群订阅检查频率可以降低）
-@scheduler.scheduled_job('cron', minute='*/3')
-async def check_upcoming_activities():
-    """检查即将开始的活动并通知订阅者"""
-    global data  # 声明使用全局变量data
-    if not data:
-        return
-        
-    current_time = time.time()
-    # 时间窗口设置：个人订阅15分钟内，群订阅提前1天
-    PERSONAL_NOTIFY_WINDOW = 15 * 60  # 15分钟
-    GROUP_NOTIFY_WINDOW = 24 * 3600   # 小时
-    bot = get_bot()
-    
-    # 记录已经通知过的活动，避免重复通知，区分个人和群通知
-    personal_notified_key = "personal_activity_notified"
-    group_notified_key = "group_activity_notified"
-    
-    if not hasattr(check_upcoming_activities, personal_notified_key):
-        setattr(check_upcoming_activities, personal_notified_key, set())
-    
-    if not hasattr(check_upcoming_activities, group_notified_key):
-        setattr(check_upcoming_activities, group_notified_key, set())
-    
-    for activity in data:
-        try:
-            start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()
-            
-            # 提取子活动并分类
-            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])
-            
-            # 处理个人订阅通知（15分钟内）
-            if current_time <= start_time <= current_time + PERSONAL_NOTIFY_WINDOW:
-                for sub in sub_activities:
-                    # 生成唯一活动标识（包含群ID维度，避免跨群重复）
-                    category = classify_activity(sub) if 'classify_activity' in globals() else ''
-                    subscribers = SubscribeConfig.get_subscribers(category)
-                    group_ids = list({gid for _, gid in subscribers})  # 获取所有相关群ID
-                    
-                    for group_id in group_ids:
-                        activity_key = f"{activity['活动名']}_{start_time}_{sub}_{group_id}"
-                        if activity_key in getattr(check_upcoming_activities, personal_notified_key):
-                            continue
-                            
-                        # 检查该群是否开启了推送
-                        if not PushConfig.get_group(group_id):
-                            continue
-                            
-                        # 收集该群内所有订阅者的@
-                        at_users = [f"[CQ:at,qq={uid}]" for uid, gid in subscribers if gid == group_id]
-                        if not at_users:
-                            continue
-                            
-                        at_msg = " ".join(at_users)
-                        start_datetime = datetime.fromtimestamp(start_time)
-                        time_str = start_datetime.strftime("%H:%M")
-                        msg = f"📢 您订阅的【{category}】类活动即将开始：\n【{sub}】\n将于今天{time_str}开始"
-                        # 处理角色ID转换为头像
-                        msg = replace_char_ids_with_icons(msg)
-                        full_msg = f"{at_msg} {msg}"
-                        
-                        try:
-                            await bot.send_group_msg(
-                                group_id=group_id,
-                                message=full_msg
-                            )
-                            sv.logger.info(f"已向群 {group_id} 的订阅者发送活动提醒：{sub}")
-                            getattr(check_upcoming_activities, personal_notified_key).add(activity_key)
-                        except Exception as e:
-                            sv.logger.error(f"向群 {group_id} 发送提醒失败: {e}")
-            
-            # 处理群订阅通知（提前1天）
-            if current_time <= start_time <= current_time + GROUP_NOTIFY_WINDOW:
-                # 计算是否正好是提前一天左右的时间点（避免多次通知）
-                time_diff = start_time - current_time
-                # 允许1小时的误差范围，确保每天只会触发一次检查
-                if 23 * 3600 <= time_diff <= 25 * 3600:
-                    for sub in sub_activities:
-                        category = classify_activity(sub) if 'classify_activity' in globals() else ''
-                        subscribed_groups = GroupSubscribeConfig.get_subscribed_groups(category)
-                        
-                        for group_id in subscribed_groups:
-                            # 生成唯一活动标识（包含群ID，确保每个群独立判断）
-                            activity_key = f"{activity['活动名']}_{start_time}_{sub}_{group_id}"
-                            if activity_key in getattr(check_upcoming_activities, group_notified_key):
-                                continue
-                                
-                            # 检查该群是否开启了推送
-                            if not PushConfig.get_group(group_id):
-                                continue
-                                
-                            start_datetime = datetime.fromtimestamp(start_time)
-                            date_str = start_datetime.strftime("%m月%d日")
-                            time_str = start_datetime.strftime("%H:%M")
-                            # 群订阅通知消息，包含@全体成员
-                            msg = f"[CQ:at,qq=all] 📢 本群订阅的【{category}】类活动即将开始：\n【{sub}】\n将于{date_str} {time_str}开始（提前一天提醒）"
-                            # 处理角色ID转换为头像
-                            msg = replace_char_ids_with_icons(msg)
-                            
-                            try:
-                                await bot.send_group_msg(
-                                    group_id=group_id,
-                                    message=msg
-                                )
-                                sv.logger.info(f"已向群 {group_id} 发送@全体成员活动提醒：{sub}")
-                                getattr(check_upcoming_activities, group_notified_key).add(activity_key)
-                            except Exception as e:
-                                sv.logger.error(f"向群 {group_id} 发送@全体成员提醒失败: {e}")
-            
-            # 限制已通知集合大小，防止内存占用过大
-            for key in [personal_notified_key, group_notified_key]:
-                if len(getattr(check_upcoming_activities, key)) > 1000:
-                    notified_list = list(getattr(check_upcoming_activities, key))
-                    # 保留最新的800条，避免频繁清理
-                    setattr(check_upcoming_activities, key, set(notified_list[-800:]))
-                    
-        except Exception as e:
-            sv.logger.error(f"检查活动时出错: {e}")
+# ===== 到点触发：一次性任务发送提醒 =====  
+  
+async def _notify_personal(activity_name, start_time, sub, category):  
+    """个人订阅：活动开始前15分钟，在群内@订阅者"""  
+    bot = get_bot()  
+    subscribers = SubscribeConfig.get_subscribers(category)  
+    group_ids = list({gid for _, gid in subscribers})  
+    for group_id in group_ids:  
+        if not PushConfig.get_group(group_id):  
+            continue  
+        at_users = [f"[CQ:at,qq={uid}]" for uid, gid in subscribers if gid == group_id]  
+        if not at_users:  
+            continue  
+        at_msg = " ".join(at_users)  
+        time_str = datetime.fromtimestamp(start_time).strftime("%H:%M")  
+        msg = f"📢 您订阅的【{category}】类活动即将开始：\n【{sub}】\n将于今天{time_str}开始"  
+        msg = replace_char_ids_with_icons(msg)  
+        full_msg = f"{at_msg} {msg}"  
+        try:  
+            await bot.send_group_msg(group_id=group_id, message=full_msg)  
+            sv.logger.info(f"已向群 {group_id} 的订阅者发送活动提醒：{sub}")  
+        except Exception as e:  
+            sv.logger.error(f"向群 {group_id} 发送提醒失败: {e}")  
+  
+  
+async def _notify_group(activity_name, start_time, sub, category):  
+    """群订阅：活动开始前1天，@全体成员"""  
+    bot = get_bot()  
+    subscribed_groups = GroupSubscribeConfig.get_subscribed_groups(category)  
+    for group_id in subscribed_groups:  
+        if not PushConfig.get_group(group_id):  
+            continue  
+        start_datetime = datetime.fromtimestamp(start_time)  
+        date_str = start_datetime.strftime("%m月%d日")  
+        time_str = start_datetime.strftime("%H:%M")  
+        msg = f"[CQ:at,qq=all] 📢 本群订阅的【{category}】类活动即将开始：\n【{sub}】\n将于{date_str} {time_str}开始（提前一天提醒）"  
+        msg = replace_char_ids_with_icons(msg)  
+        try:  
+            await bot.send_group_msg(group_id=group_id, message=msg)  
+            sv.logger.info(f"已向群 {group_id} 发送@全体成员活动提醒：{sub}")  
+        except Exception as e:  
+            sv.logger.error(f"向群 {group_id} 发送@全体成员提醒失败: {e}")  
+  
+  
+def reschedule_activity_notifications():  
+    """根据当前 data 重建所有一次性提醒任务（到点触发）"""  
+    global data  
+    # 先清掉旧的 notify_ 开头的 job，避免残留已删除的活动  
+    for job in list(scheduler.get_jobs()):  
+        if str(job.id).startswith("notify_"):  
+            try:  
+                scheduler.remove_job(job.id)  
+            except Exception:  
+                pass  
+  
+    if not data:  
+        return  
+  
+    now = time.time()  
+    PERSONAL_LEAD = 15 * 60      # 提前15分钟  
+    GROUP_LEAD = 12 * 3600       # 提前半天  
+    count = 0  
+  
+    for activity in data:  
+        try:  
+            start_time = datetime.strptime(activity['开始时间'], "%Y/%m/%d %H").timestamp()  
+            sub_activities = re.findall(r'【(.*?)】', activity['活动名'])  
+            for sub in sub_activities:  
+                category = classify_activity(sub) if 'classify_activity' in globals() else ''  
+  
+                personal_time = start_time - PERSONAL_LEAD  
+                if personal_time > now:  
+                    scheduler.add_job(  
+                        _notify_personal, 'date',  
+                        run_date=datetime.fromtimestamp(personal_time),  
+                        args=[activity['活动名'], start_time, sub, category],  
+                        id=f"notify_personal_{activity['活动名']}_{start_time}_{sub}",  
+                        replace_existing=True,  
+                    )  
+                    count += 1  
+  
+                group_time = start_time - GROUP_LEAD  
+                if group_time > now:  
+                    scheduler.add_job(  
+                        _notify_group, 'date',  
+                        run_date=datetime.fromtimestamp(group_time),  
+                        args=[activity['活动名'], start_time, sub, category],  
+                        id=f"notify_group_{activity['活动名']}_{start_time}_{sub}",  
+                        replace_existing=True,  
+                    )  
+                    count += 1  
+        except Exception as e:  
+            sv.logger.error(f"注册活动提醒任务时出错: {e}")  
+  
+    sv.logger.info(f"✅ 已注册 {count} 个活动提醒任务")
         
 class PushConfig:
     @staticmethod
@@ -791,8 +768,11 @@ data = load_activity_data()
 
 if not data:
     sv.logger.error("⚠️ 活动数据为空，请检查 data.json！")
-else:
-    sv.logger.info(f"✅ 成功加载 {len(data)} 条活动数据")
+else:  
+    sv.logger.info(f"✅ 成功加载 {len(data)} 条活动数据")  
+  
+# 启动时注册所有到点提醒任务  
+reschedule_activity_notifications()
 
 # 在文件顶部添加
 last_data_hash = None  # 存储上次数据的哈希值
@@ -864,12 +844,15 @@ async def update_half_monthly_data():
         with open(DATA_FILE, 'w', encoding='utf-8') as f:  
             f.write(text)  
   
-        # 更新全局变量  
-        data = new_data  
-        last_data_hash = new_hash  
+        # 更新全局变量    
+        data = new_data    
+        last_data_hash = new_hash    
   
-        sv.logger.info(f"✅ 半月刊数据更新成功！已加载 {len(data)} 条活动数据")  
-        return "updated"  
+        # 数据变了，重建所有到点提醒任务  
+        reschedule_activity_notifications()  
+  
+        sv.logger.info(f"✅ 半月刊数据更新成功！已加载 {len(data)} 条活动数据")    
+        return "updated"
     except Exception as e:  
         sv.logger.error(f"写入半月刊数据时出错: {str(e)}")  
         return "error"
