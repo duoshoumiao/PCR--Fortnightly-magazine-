@@ -376,8 +376,6 @@ async def _notify_personal(activity_name, start_time, sub, category):
     subscribers = SubscribeConfig.get_subscribers(category)  
     group_ids = list({gid for _, gid in subscribers})  
     for group_id in group_ids:  
-        if not PushConfig.get_group(group_id):  
-            continue  
         at_users = [f"[CQ:at,qq={uid}]" for uid, gid in subscribers if gid == group_id]  
         if not at_users:  
             continue  
@@ -398,8 +396,6 @@ async def _notify_group(activity_name, start_time, sub, category):
     bot = get_bot()  
     subscribed_groups = GroupSubscribeConfig.get_subscribed_groups(category)  
     for group_id in subscribed_groups:  
-        if not PushConfig.get_group(group_id):  
-            continue  
         start_datetime = datetime.fromtimestamp(start_time)  
         date_str = start_datetime.strftime("%m月%d日")  
         time_str = start_datetime.strftime("%H:%M")  
@@ -771,8 +767,6 @@ if not data:
 else:  
     sv.logger.info(f"✅ 成功加载 {len(data)} 条活动数据")  
   
-# 启动时注册所有到点提醒任务  
-reschedule_activity_notifications()
 
 # 在文件顶部添加
 last_data_hash = None  # 存储上次数据的哈希值
@@ -2205,3 +2199,6 @@ async def check_reminders():
     end_time = time.time()
     logger.info(f"任务执行耗时: {end_time - start_time:.2f}秒")
     logger.info(f"===== 活动提醒定时检查结束 =====")
+
+# 启动时注册所有到点提醒任务  
+reschedule_activity_notifications()
