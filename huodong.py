@@ -399,7 +399,7 @@ async def _notify_group(activity_name, start_time, sub, category):
         start_datetime = datetime.fromtimestamp(start_time)  
         date_str = start_datetime.strftime("%m月%d日")  
         time_str = start_datetime.strftime("%H:%M")  
-        msg = f"[CQ:at,qq=all] 📢 本群订阅的【{category}】类活动即将开始：\n【{sub}】\n将于{date_str} {time_str}开始（提前一天提醒）"  
+        msg = f"[CQ:at,qq=all] 📢 本群订阅的【{category}】类活动即将开始：\n【{sub}】\n将于{date_str} {time_str}开始"  
         msg = replace_char_ids_with_icons(msg)  
         try:  
             await bot.send_group_msg(group_id=group_id, message=msg)  
@@ -533,6 +533,49 @@ async def disable_daily_push(session):
     PushConfig.set_group(group_id, False)
     await session.send(f"✅ 已关闭群 {group_id} 的每日活动推送")
 
+@sv.on_command('全群推送状态', aliases=('查看全群推送', '推送状态'))  
+async def all_push_status(session):  
+    """查看所有群的每日推送开关状态（仅超级用户）"""  
+    if not priv.check_priv(session.event, priv.SUPERUSER):  
+        await session.send("⚠️ 需要超级用户权限")  
+        return  
+  
+    config = PushConfig.load()  
+  
+    # 尝试获取群名称  
+    group_names = {}  
+    try:  
+        bot = get_bot()  
+        group_list = await bot.get_group_list()  
+        group_names = {str(g['group_id']): g['group_name'] for g in group_list}  
+    except Exception as e:  
+        sv.logger.error(f"获取群列表失败: {e}")  
+  
+    enabled = [(gid, group_names.get(gid, "未知群名")) for gid, on in config.items() if on]  
+    disabled = [(gid, group_names.get(gid, "未知群名")) for gid, on in config.items() if not on]  
+  
+    msg = (  
+        "每日推送开关状态:\n"  
+        f"已开启群: {len(enabled)}\n"  
+        f"已关闭群: {len(disabled)}\n\n"  
+    )  
+  
+    if enabled:  
+        msg += "✅ 已开启:\n"  
+        for gid, name in enabled:  
+            msg += f"{gid} - {name}\n"  
+        msg += "\n"  
+  
+    if disabled:  
+        msg += "❌ 已关闭:\n"  
+        for gid, name in disabled:  
+            msg += f"{gid} - {name}\n"  
+  
+    if not config:  
+        msg += "（暂无任何群的推送配置记录）"  
+  
+    await session.send(msg.strip())
+    
 # ========== 定时推送任务 ==========
 @scheduler.scheduled_job('cron', hour=5, minute=30)
 async def daily_calendar_push():
