@@ -101,6 +101,33 @@ def replace_char_ids_with_icons(text, icon_size=64):
     
     return processed_text
 
+# 将文本中的角色ID移除，并把头像追加到内容下一行  
+def move_char_ids_to_new_line(text, icon_size=64):  
+    char_ids = sorted(set(re.findall(r'\d{4,6}', text)), key=len, reverse=True)  
+    processed_text = text  
+    icon_codes = []  
+  
+    for char_id in char_ids:  
+        try:  
+            char_icon_path = R.img(f'priconne/unit/icon_unit_{char_id}31.png').path  
+            if os.path.exists(char_icon_path):  
+                char_icon_path = char_icon_path.replace('\\', '/')  
+                cq_code = f'[CQ:image,file=file:///{char_icon_path}]'  
+                icon_codes.append(cq_code)  
+                # 把ID从原文本删除，使【】内只剩文字  
+                processed_text = processed_text.replace(char_id, "")  
+            else:  
+                sv.logger.warning(f"角色头像不存在: {char_id}")  
+        except Exception as e:  
+            sv.logger.error(f"处理角色ID {char_id} 失败: {e}")  
+            continue  
+  
+    # 头像单独放到下一行  
+    if icon_codes:  
+        processed_text = processed_text + "\n" + "".join(icon_codes)  
+  
+    return processed_text
+
 # 新增订阅配置管理
 class SubscribeConfig:
     @staticmethod
@@ -382,7 +409,7 @@ async def _notify_personal(activity_name, start_time, sub, category):
         at_msg = " ".join(at_users)  
         time_str = datetime.fromtimestamp(start_time).strftime("%H:%M")  
         msg = f"📢 您订阅的【{category}】类活动即将开始：\n【{sub}】\n将于今天{time_str}开始"  
-        msg = replace_char_ids_with_icons(msg)  
+        msg = move_char_ids_to_new_line(msg)  
         full_msg = f"{at_msg} {msg}"  
         try:  
             await bot.send_group_msg(group_id=group_id, message=full_msg)  
@@ -400,7 +427,7 @@ async def _notify_group(activity_name, start_time, sub, category):
         date_str = start_datetime.strftime("%m月%d日")  
         time_str = start_datetime.strftime("%H:%M")  
         msg = f"[CQ:at,qq=all] 📢 本群订阅的【{category}】类活动即将开始：\n【{sub}】\n将于{date_str} {time_str}开始"  
-        msg = replace_char_ids_with_icons(msg)  
+        msg = move_char_ids_to_new_line(msg)  
         try:  
             await bot.send_group_msg(group_id=group_id, message=msg)  
             sv.logger.info(f"已向群 {group_id} 发送@全体成员活动提醒：{sub}")  
@@ -2220,7 +2247,7 @@ async def check_reminders():
                     message = f"[CQ:at,qq={reminder['user_id']}]\n⚠️ 您设置的关键词「{reminder['keyword']}」提醒触发：\n" \
                               f"【{act['活动名']}】\n将在{time_str}后{action_text}（{reminder_text}）！"
                     # 添加角色ID转换为头像的处理
-                    message = replace_char_ids_with_icons(message)
+                    message = move_char_ids_to_new_line(message)
                     await bot.send_group_msg(group_id=reminder['group_id'], message=message)
                     logger.info(f"已向群{reminder['group_id']}的用户{reminder['user_id']}发送提醒")
                     
