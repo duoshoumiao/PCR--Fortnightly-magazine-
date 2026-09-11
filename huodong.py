@@ -2321,13 +2321,17 @@ async def check_reminders():
                 logger.debug(f"当前时间差: {time_diff:.1f}秒 阈值范围: {reminder['threshold']}秒")
                 
                 # 检查是否达到提醒条件
-                if 0 <= time_diff <= reminder['threshold'] + 300:
-                    # 发送提醒消息
-                    time_str = format_seconds_to_time(reminder['threshold'])
-                    message = f"[CQ:at,qq={reminder['user_id']}]\n⚠️ 您设置的关键词「{reminder['keyword']}」提醒触发：\n" \
-                              f"【{act['活动名']}】\n将在{time_str}后{action_text}（{reminder_text}）！"
-                    # 添加角色ID转换为头像的处理
-                    message = move_char_ids_to_new_line(message)
+                if 0 <= time_diff <= reminder['threshold'] + 300:  
+                    # 发送提醒消息  
+                    time_str = format_seconds_to_time(reminder['threshold'])  
+                    # 只对活动名做头像处理，让头像紧跟在活动名后面  
+                    act_name_part = move_char_ids_to_new_line(f"【{act['活动名']}】")  
+                    message = (  
+                        f"[CQ:at,qq={reminder['user_id']}]\n"  
+                        f"⚠️ 您设置的关键词「{reminder['keyword']}」提醒触发：\n"  
+                        f"{act_name_part}\n"  
+                        f"将在{time_str}后{action_text}（{reminder_text}）！"  
+                    )  
                     await bot.send_group_msg(group_id=reminder['group_id'], message=message)
                     logger.info(f"已向群{reminder['group_id']}的用户{reminder['user_id']}发送提醒")
                     
