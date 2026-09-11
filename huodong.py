@@ -618,7 +618,8 @@ async def daily_calendar_push():
         # 获取日常活动文本内容
         msg = await get_daily_activity_text()
         # 生成图片
-        img = await draw_text_image_with_icons("每日活动推送", msg)
+        title = datetime.now().strftime("%Y年%m月%d日 %H:%M")  
+        img = await draw_text_image_with_icons(title, msg)
         img_b64 = base64.b64encode(img.getvalue()).decode()
         
         for group_id in enabled_groups:
@@ -1516,8 +1517,81 @@ async def draw_text_image_with_icons(title: str, content: str):
         })
         total_height += text_height + 20  # 段落间距
     
-    # 创建图片
-    img = Image.new('RGB', (img_width, total_height), (240, 240, 245))
+    # 创建图片（尝试加载随机背景）  
+    bg_img = None  
+    try:  
+        headers = {  
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "  
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "  
+                           "Chrome/120.0.0.0 Safari/537.36"),  
+            "Referer": "https://random.MoeJue.cn/",  
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",  
+        }  
+        resp = requests.get(  
+            "https://random.MoeJue.cn/randbg",  
+            params={"type": "mobile", "size": "0"},  
+            headers=headers,  
+            timeout=15,  
+            allow_redirects=True  
+        )  
+        resp.raise_for_status()  
+  
+        content_type = resp.headers.get("Content-Type", "").lower()  
+        # 诊断日志：确认接口到底返回了什么  
+        sv.logger.info(f"[randbg] status={resp.status_code} url={resp.url} "  
+                       f"content_type={content_type} len={len(resp.content)}")  
+  
+        if content_type.startswith("image/"):  
+            # 直接返回图片  
+            bg_img = Image.open(BytesIO(resp.content)).convert('RGBA')  
+        elif "json" in content_type:  
+            # 返回 JSON，需从中解析真实图片 URL  
+            data = resp.json()  
+            sv.logger.info(f"[randbg] json={data}")  
+            real_url = None  
+            if isinstance(data, dict):  
+                for key in ("url", "data", "pic", "image", "img"):  
+                    v = data.get(key)  
+                    if isinstance(v, str) and v.startswith("http"):  
+                        real_url = v  
+                        break  
+            if real_url:  
+                r2 = requests.get(real_url, headers=headers, timeout=15)  
+                r2.raise_for_status()  
+                bg_img = Image.open(BytesIO(r2.content)).convert('RGBA')  
+            else:  
+                sv.logger.warning(f"[randbg] 未能从 JSON 解析出图片 URL: {data}")  
+        else:  
+            # text/html 等：多半是被反盗链拦截返回了教程/说明页  
+            sv.logger.warning(f"[randbg] 非图片响应，content_type={content_type}，回退纯色背景")  
+    except Exception as e:  
+        sv.logger.warning(f"随机背景加载失败: {e}")  
+        bg_img = None  
+  
+    if bg_img:  
+        bg_width, bg_height = bg_img.size  
+        target_ratio = img_width / total_height  
+        bg_ratio = bg_width / bg_height  
+  
+        if bg_ratio > target_ratio:  
+            new_height = total_height  
+            new_width = int(bg_width * (new_height / bg_height))  
+        else:  
+            new_width = img_width  
+            new_height = int(bg_height * (new_width / bg_width))  
+  
+        bg_img = bg_img.resize((new_width, new_height), Image.LANCZOS)  
+  
+        img = Image.new('RGBA', (img_width, total_height), (0, 0, 0, 0))  
+        x_offset = (img_width - new_width) // 2  
+        y_offset = (total_height - new_height) // 2  
+        img.paste(bg_img, (x_offset, y_offset))  
+  
+        overlay = Image.new('RGBA', (img_width, total_height), (240, 240, 245, 100))  
+        img = Image.alpha_composite(img, overlay)  
+    else:  
+        img = Image.new('RGB', (img_width, total_height), (240, 240, 245))  
+  
     draw = ImageDraw.Draw(img)
     
     # 加载字体
@@ -1541,12 +1615,14 @@ async def draw_text_image_with_icons(title: str, content: str):
         font_title = ImageFont.load_default()
         font_content = ImageFont.load_default()
     
-    # 绘制标题
-    try:
-        title_width = draw.textlength(title, font=font_title)
-        draw.text(((img_width - title_width) // 2, padding), title, fill=(0, 0, 0), font=font_title)
-    except:
-        draw.text((padding, padding), title, fill=(0, 0, 0))
+    # 绘制标题  
+    try:  
+        title_width = draw.textlength(title, font=font_title)  
+        draw.text(((img_width - title_width) // 2, padding), title, fill=(0, 0, 0),  
+                  font=font_title, stroke_width=2, stroke_fill=(255, 255, 255))  
+    except:  
+        draw.text((padding, padding), title, fill=(0, 0, 0),  
+                  stroke_width=2, stroke_fill=(255, 255, 255))
     
     # 绘制分割线
     draw.line([(padding, padding + 50), (img_width - padding, padding + 50)], fill=(200, 200, 200), width=2)
@@ -1557,12 +1633,14 @@ async def draw_text_image_with_icons(title: str, content: str):
     for para in paragraph_data:
         # 绘制文本
         lines = para['text'].split('\n')
-        for line in lines:
-            if line.strip():
-                try:
-                    draw.text((padding, y_position), line, fill=(0, 0, 0), font=font_content)
-                except:
-                    draw.text((padding, y_position), line, fill=(0, 0, 0))
+        for line in lines:  
+            if line.strip():  
+                try:  
+                    draw.text((padding, y_position), line, fill=(0, 0, 0), font=font_content,  
+                              stroke_width=2, stroke_fill=(255, 255, 255))  
+                except:  
+                    draw.text((padding, y_position), line, fill=(0, 0, 0),  
+                              stroke_width=2, stroke_fill=(255, 255, 255))
                 y_position += line_height
         
         # 绘制头像（在文本下方）
@@ -1575,8 +1653,10 @@ async def draw_text_image_with_icons(title: str, content: str):
         
         y_position += 10  # 段落间距
     
-    # 保存图片
-    img_byte_arr = io.BytesIO()
+    # 保存图片  
+    if img.mode == 'RGBA':  
+        img = img.convert('RGB')  
+    img_byte_arr = io.BytesIO()  
     img.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
     
