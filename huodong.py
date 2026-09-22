@@ -993,7 +993,7 @@ category_colors = {
 
 # 活动分类函数
 def classify_activity(activity_name):
-    if 'N' in activity_name or 'H' in activity_name or 'VH' in activity_name or '庆典' in activity_name:
+    if 'N' in activity_name or '大师币' in activity_name or 'H' in activity_name or '心碎' in activity_name or 'VH' in activity_name or '庆典' in activity_name:
         return "庆典活动"
     elif '剧情活动' in activity_name or '角色活动' in activity_name or '复刻剧情活动' in activity_name:
         return "剧情活动"
