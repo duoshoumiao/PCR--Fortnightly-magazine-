@@ -1780,8 +1780,18 @@ async def daily_activity(session):
     if has_tomorrow_activity:
         msg += '\n■■■■■■■■■■■■■■■■■■■■■■■ ■ ■■■■■■■■■■■■■■■■■■■■■■■\n\n明日开始的活动：' + tomorrow_msg
     
-    img = await draw_text_image_with_icons("日常活动", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 剧情活动功能
 @sv.on_command('剧情活动', aliases=('角色活动', '活动'))
@@ -1802,8 +1812,18 @@ async def story_activity(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('剧情活动（一周内活动）：\n') else msg + '当前没有剧情活动'
-    img = await draw_text_image_with_icons("剧情活动", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # UP卡池功能
 @sv.on_command('up卡池', aliases=('up', '卡池'))
@@ -1824,8 +1844,18 @@ async def up_gacha(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('up卡池（一周内活动）：\n') else msg + '当前没有up卡池'
-    img = await draw_text_image_with_icons("UP卡池", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 免费十连功能
 @sv.on_command('免费十连')
@@ -1843,8 +1873,18 @@ async def free_gacha(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('免费十连活动：\n') else msg + '当前没有免费十连活动'
-    img = await draw_text_image_with_icons("免费十连", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 公会战功能
 @sv.on_command('公会战')
@@ -1862,8 +1902,18 @@ async def clan_battle(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('公会战信息：\n') else msg + '当前没有公会战活动'
-    img = await draw_text_image_with_icons("公会战", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 露娜塔功能
 @sv.on_command('露娜塔')
@@ -1881,8 +1931,18 @@ async def luna_tower(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('露娜塔信息：\n') else msg + '当前没有露娜塔活动'
-    img = await draw_text_image_with_icons("露娜塔", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 新开专武功能
 @sv.on_command('新开专')
@@ -1900,8 +1960,18 @@ async def new_unique(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('新开专武信息：\n') else msg + '当前没有新开专武信息'
-    img = await draw_text_image_with_icons("新开专武", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 斗技场功能
 @sv.on_command('斗技场')
@@ -1919,8 +1989,18 @@ async def arena(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('斗技场信息：\n') else msg + '当前没有斗技场活动'
-    img = await draw_text_image_with_icons("斗技场", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 庆典活动功能
 @sv.on_command('庆典活动', aliases=('庆典'))
@@ -1938,8 +2018,18 @@ async def campaign(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('庆典/双倍活动：\n') else msg + '当前没有庆典/双倍活动'
-    img = await draw_text_image_with_icons("庆典活动", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 # 地下城功能
 @sv.on_command('地下城', aliases=('sp地下城', '地下城活动'))
@@ -1957,8 +2047,18 @@ async def dungeon(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('地下城活动：\n') else msg + '当前没有地下城活动'
-    img = await draw_text_image_with_icons("地下城活动", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
    
 @sv.on_command('深渊', aliases=('讨伐战', '深渊讨伐战'))
 async def dungeon(session):
@@ -1975,8 +2075,18 @@ async def dungeon(session):
                 msg += f'\n[{time_status}] \n【{sub}】\n'
     
     msg = msg if len(msg) > len('深渊讨伐战：\n') else msg + '当前没有深渊讨伐战活动'
-    img = await draw_text_image_with_icons("深渊讨伐战", msg)
-    await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")   
+    msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
+    try:  
+        img = await draw_text_image_with_icons("日常活动", msg)  
+        await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
+    except Exception as e:  
+        sv.logger.error(f"生成图片时出错: {e}")  
+        await session.send("❌ 生成时出错，请稍后再试")  
+    finally:  
+        try:  
+            await session.bot.delete_msg(message_id=msg_id)  
+        except Exception as e:  
+            sv.logger.error(f"删除提示消息失败: {e}")
 
 
 
