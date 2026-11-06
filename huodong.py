@@ -76,6 +76,113 @@ if not GROUP_SUBSCRIBE_CONFIG_PATH.exists():
     with open(GROUP_SUBSCRIBE_CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump({}, f, ensure_ascii=False)
 
+# ========== 指令背景图缓存 ==========
+# 每个指令拥有自己的背景图缓存，缓存按日期（YYYY-MM-DD）存放，
+# 每天首次调用该指令时会重新下载一张背景图并落盘缓存，
+# 当天后续调用直接复用缓存；跨天后旧缓存会被清空，重新备图。
+BG_CACHE_ROOT = Path(__file__).parent / "bg_cache"
+
+# 各指令的背景图缓存键（键名 -> 用于生成缓存文件名的标识）
+BG_CACHE_KEYS = {
+    "half_monthly": "half_monthly",   # 半月刊
+    "daily": "daily",                 # 日常活动/日历/日程
+    "story": "story",                 # 剧情活动/角色活动/活动
+    "up_gacha": "up_gacha",           # up卡池/up/卡池
+    "free_gacha": "free_gacha",       # 免费十连
+    "clan_battle": "clan_battle",     # 公会战
+    "luna_tower": "luna_tower",       # 露娜塔
+    "new_unique": "new_unique",       # 新开专
+    "arena": "arena",                 # 斗技场
+    "campaign": "campaign",           # 庆典活动/庆典
+    "dungeon": "dungeon",             # 地下城/sp地下城
+    "abyss": "abyss",                 # 深渊/讨伐战/深渊讨伐战
+    "daily_push": "daily_push",       # 每日5:30推送
+}
+
+
+def _today_str() -> str:
+    """今天的日期字符串（YYYY-MM-DD），作为缓存分区的键"""
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _bg_cache_dir() -> Path:
+    """当天使用的背景图缓存目录"""
+    d = BG_CACHE_ROOT / _today_str()
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        sv.logger.error(f"创建背景图缓存目录失败: {e}")
+    return d
+
+
+def _bg_cache_path(cache_key: str) -> Path:
+    """某个指令当天的背景图缓存文件路径"""
+    key = BG_CACHE_KEYS.get(cache_key, cache_key)
+    return _bg_cache_dir() / f"{key}.img"
+
+
+def _bg_cache_read(cache_key: str):
+    """读取当天缓存的背景图，读取失败返回 None"""
+    path = _bg_cache_path(cache_key)
+    try:
+        if not path.exists() or path.stat().st_size == 0:
+            return None
+        with open(path, "rb") as f:
+            raw = f.read()
+        return Image.open(BytesIO(raw)).convert('RGBA')
+    except Exception as e:
+        sv.logger.warning(f"读取背景图缓存失败({path}): {e}")
+        return None
+
+
+def _bg_cache_write(cache_key: str, img) -> bool:
+    """把背景图写入当天缓存，写入失败返回 False"""
+    path = _bg_cache_path(cache_key)
+    try:
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        with open(path, "wb") as f:
+            f.write(buf.getvalue())
+        return True
+    except Exception as e:
+        sv.logger.warning(f"写入背景图缓存失败({path}): {e}")
+        return False
+
+
+def clear_bg_cache(keep_today: bool = False) -> int:
+    """清空背景图缓存，返回被删除的文件数
+
+    keep_today=True 时保留当天的缓存目录（用于启动时清理，避免重启后重新下载当天背景图）
+    """
+    removed = 0
+    today = _today_str()
+    try:
+        if not BG_CACHE_ROOT.exists():
+            return 0
+        for day_dir in BG_CACHE_ROOT.iterdir():
+            try:
+                if not day_dir.is_dir():
+                    day_dir.unlink()
+                    continue
+                if keep_today and day_dir.name == today:
+                    continue
+                for f in day_dir.iterdir():
+                    try:
+                        f.unlink()
+                        removed += 1
+                    except Exception:
+                        pass
+                try:
+                    day_dir.rmdir()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+    except Exception as e:
+        sv.logger.error(f"清空背景图缓存失败: {e}")
+    return removed
+
+
 # 新增角色头像ID处理函数，将文本中的角色ID转换为CQ码图片
 def replace_char_ids_with_icons(text, icon_size=64):
     # 按ID长度倒序处理，避免短ID被长ID包含时的替换冲突
@@ -602,7 +709,19 @@ async def all_push_status(session):
         msg += "（暂无任何群的推送配置记录）"  
   
     await session.send(msg.strip())
-    
+
+# ========== 背景图缓存清理任务 ==========
+# 每天凌晨清空一次所有指令的背景图缓存，
+# 之后各指令在当天首次被调用时会各自重新下载一张背景图并缓存。
+@scheduler.scheduled_job('cron', hour=0, minute=1, id='clear_bg_cache_daily')
+async def clear_bg_cache_daily():
+    """每日清空背景图缓存"""
+    try:
+        removed = clear_bg_cache()
+        sv.logger.info(f"🧹 已清空背景图缓存，共清理 {removed} 个缓存文件")
+    except Exception as e:
+        sv.logger.error(f"清空背景图缓存任务出错: {e}")
+
 # ========== 定时推送任务 ==========
 @scheduler.scheduled_job('cron', hour=5, minute=30)
 async def daily_calendar_push():
@@ -619,7 +738,7 @@ async def daily_calendar_push():
         msg = await get_daily_activity_text()
         # 生成图片
         title = datetime.now().strftime("%Y年%m月%d日 %H:%M")  
-        img = await draw_text_image_with_icons(title, msg)
+        img = await draw_text_image_with_icons(title, msg, bg_cache_key="daily_push")
         img_b64 = base64.b64encode(img.getvalue()).decode()
         
         for group_id in enabled_groups:
@@ -1016,6 +1135,136 @@ def classify_activity(activity_name):
     else:
         return "其他活动"
 
+
+# ========== 背景图下载与缓存 ==========
+
+def _download_card_background():
+    """下载一张角色立绘作为背景图（半月刊专用），失败返回 None"""
+    import tempfile
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://redive.estertion.win/",
+    }
+
+    # 从活动数据中自动提取角色ID
+    all_char_ids = []
+    for activity in data:
+        found = re.findall(r'\d{4,6}', activity.get('活动名', ''))
+        all_char_ids.extend(found)
+
+    # 去重并打乱，每个ID先试61再试31
+    unique_ids = list(dict.fromkeys(all_char_ids))  # 去重保持顺序
+    random.shuffle(unique_ids)
+
+    # 构建候选列表：每个ID先61后31
+    card_id_candidates = []
+    for cid in unique_ids:
+        try:
+            base = int(cid)
+            card_id_candidates.append(str(base * 100 + 61))  # 先试6星
+            card_id_candidates.append(str(base * 100 + 31))  # 再试3星
+        except Exception:
+            pass
+    # 保底fallback
+    card_id_candidates.append("100161")
+    card_id_candidates.append("100131")
+
+    for card_id in card_id_candidates:
+        url = f"https://redive.estertion.win/card/full/{card_id}.webp"
+        tmp_path = None
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(resp.content)
+            img = Image.open(tmp_path).convert('RGBA')
+            sv.logger.info(f"背景图加载成功: {url}")
+            return img
+        except Exception as e:
+            sv.logger.warning(f"背景图 {card_id} 加载失败({e})，尝试下一个")
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+    return None
+
+
+def _download_random_background():
+    """下载一张随机背景图，失败返回 None"""
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/120.0.0.0 Safari/537.36"),
+        "Referer": "https://random.MoeJue.cn/",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    try:
+        resp = requests.get(
+            "https://random.MoeJue.cn/randbg",
+            params={"type": "mobile", "size": "0"},
+            headers=headers,
+            timeout=15,
+            allow_redirects=True
+        )
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("Content-Type", "").lower()
+        # 诊断日志：确认接口到底返回了什么
+        sv.logger.info(f"[randbg] status={resp.status_code} url={resp.url} "
+                       f"content_type={content_type} len={len(resp.content)}")
+
+        if content_type.startswith("image/"):
+            # 直接返回图片
+            return Image.open(BytesIO(resp.content)).convert('RGBA')
+        elif "json" in content_type:
+            # 返回 JSON，需从中解析真实图片 URL
+            json_data = resp.json()
+            sv.logger.info(f"[randbg] json={json_data}")
+            real_url = None
+            if isinstance(json_data, dict):
+                for key in ("url", "data", "pic", "image", "img"):
+                    v = json_data.get(key)
+                    if isinstance(v, str) and v.startswith("http"):
+                        real_url = v
+                        break
+            if real_url:
+                r2 = requests.get(real_url, headers=headers, timeout=15)
+                r2.raise_for_status()
+                return Image.open(BytesIO(r2.content)).convert('RGBA')
+            sv.logger.warning(f"[randbg] 未能从 JSON 解析出图片 URL: {json_data}")
+        else:
+            # text/html 等：多半是被反盗链拦截返回了教程/说明页
+            sv.logger.warning(f"[randbg] 非图片响应，content_type={content_type}，回退纯色背景")
+    except Exception as e:
+        sv.logger.warning(f"随机背景加载失败: {e}")
+    return None
+
+
+def get_cached_background(cache_key: str, source: str = "random"):
+    """获取指定指令的背景图：优先读取当天缓存，没有则重新下载并写入缓存。
+
+    cache_key: 指令的缓存键（见 BG_CACHE_KEYS）
+    source: "random" 随机背景图 / "card" 角色立绘背景图
+    """
+    cached = _bg_cache_read(cache_key)
+    if cached is not None:
+        sv.logger.debug(f"[bg_cache] 命中当天缓存: {cache_key}")
+        return cached
+
+    if source == "card":
+        bg_img = _download_card_background()
+    else:
+        bg_img = _download_random_background()
+
+    if bg_img is not None:
+        if _bg_cache_write(cache_key, bg_img):
+            sv.logger.info(f"[bg_cache] 已为【{cache_key}】备好今日背景图")
+    return bg_img
+
+
 # 绘制半月刊图片
 async def draw_half_monthly_report():
     current_time = time.time()
@@ -1088,57 +1337,9 @@ async def draw_half_monthly_report():
     column_width = img_width // 2 - 70 if use_two_columns else img_width - 100
 
     # 创建画布  
-    import tempfile  
-    _bg_tmp_path = None  
     try:  
-        # 从活动数据中自动提取角色ID  
-        all_char_ids = []  
-        for activity in data:  
-            found = re.findall(r'\d{4,6}', activity.get('活动名', ''))  
-            all_char_ids.extend(found)  
-  
-        # 去重并打乱，每个ID先试61再试31  
-        unique_ids = list(dict.fromkeys(all_char_ids))  # 去重保持顺序  
-        random.shuffle(unique_ids)  
-  
-        # 构建候选列表：每个ID先61后31  
-        card_id_candidates = []  
-        for cid in unique_ids:  
-            try:  
-                base = int(cid)  
-                card_id_candidates.append(str(base * 100 + 61))  # 先试6星  
-                card_id_candidates.append(str(base * 100 + 31))  # 再试3星  
-            except:  
-                pass  
-        # 保底fallback  
-        card_id_candidates.append("100161")  
-        card_id_candidates.append("100131")  
-  
-        headers = {  
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",  
-            "Referer": "https://redive.estertion.win/",  
-        }  
-  
-        bg_img = None  
-        for card_id in card_id_candidates:  
-            url = f"https://redive.estertion.win/card/full/{card_id}.webp"  
-            try:  
-                resp = requests.get(url, headers=headers, timeout=10)  
-                resp.raise_for_status()  
-                with tempfile.NamedTemporaryFile(suffix=".webp", delete=False) as tmp:  
-                    _bg_tmp_path = tmp.name  
-                    tmp.write(resp.content)  
-                bg_img = Image.open(_bg_tmp_path).convert('RGBA')  
-                sv.logger.info(f"背景图加载成功: {url}")  
-                break  
-            except Exception as e:  
-                sv.logger.warning(f"背景图 {card_id} 加载失败({e})，尝试下一个")  
-                if _bg_tmp_path and os.path.exists(_bg_tmp_path):  
-                    try:  
-                        os.remove(_bg_tmp_path)  
-                    except:  
-                        pass  
-                _bg_tmp_path = None  
+        # 半月刊拥有自己的每日背景图缓存，当天只下载一次
+        bg_img = get_cached_background("half_monthly", source="card")  
   
         if bg_img:  
             bg_width, bg_height = bg_img.size  
@@ -1166,12 +1367,6 @@ async def draw_half_monthly_report():
     except Exception as e:  
         sv.logger.error(f"背景加载失败: {e}")  
         img = Image.new('RGB', (img_width, total_height), (240, 240, 245))  
-    finally:  
-        if _bg_tmp_path and os.path.exists(_bg_tmp_path):  
-            try:  
-                os.remove(_bg_tmp_path)  
-            except Exception as e:  
-                sv.logger.error(f"清理背景缓存失败: {e}")  
   
     draw = ImageDraw.Draw(img)  # ← 必须在 draw_column 定义之前
 
@@ -1463,8 +1658,11 @@ async def half_monthly_report(session):
             sv.logger.error(f"删除提示消息失败: {e}")
 
 # 通用绘制文本图片函数
-async def draw_text_image_with_icons(title: str, content: str):
-    """绘制带标题和头像的文本图片（头像显示在对应内容的下一行）"""
+async def draw_text_image_with_icons(title: str, content: str, bg_cache_key: str = "daily"):
+    """绘制带标题和头像的文本图片（头像显示在对应内容的下一行）
+
+    bg_cache_key: 该指令的背景图缓存键，每个指令每天各自持有一张背景图
+    """
     # 图片尺寸
     img_width = 800
     line_height = 40
@@ -1517,53 +1715,10 @@ async def draw_text_image_with_icons(title: str, content: str):
         })
         total_height += text_height + 20  # 段落间距
     
-    # 创建图片（尝试加载随机背景）  
+    # 创建图片（使用该指令当天的背景图缓存，没有则重新下载并缓存）  
     bg_img = None  
     try:  
-        headers = {  
-            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "  
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "  
-                           "Chrome/120.0.0.0 Safari/537.36"),  
-            "Referer": "https://random.MoeJue.cn/",  
-            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",  
-        }  
-        resp = requests.get(  
-            "https://random.MoeJue.cn/randbg",  
-            params={"type": "mobile", "size": "0"},  
-            headers=headers,  
-            timeout=15,  
-            allow_redirects=True  
-        )  
-        resp.raise_for_status()  
-  
-        content_type = resp.headers.get("Content-Type", "").lower()  
-        # 诊断日志：确认接口到底返回了什么  
-        sv.logger.info(f"[randbg] status={resp.status_code} url={resp.url} "  
-                       f"content_type={content_type} len={len(resp.content)}")  
-  
-        if content_type.startswith("image/"):  
-            # 直接返回图片  
-            bg_img = Image.open(BytesIO(resp.content)).convert('RGBA')  
-        elif "json" in content_type:  
-            # 返回 JSON，需从中解析真实图片 URL  
-            data = resp.json()  
-            sv.logger.info(f"[randbg] json={data}")  
-            real_url = None  
-            if isinstance(data, dict):  
-                for key in ("url", "data", "pic", "image", "img"):  
-                    v = data.get(key)  
-                    if isinstance(v, str) and v.startswith("http"):  
-                        real_url = v  
-                        break  
-            if real_url:  
-                r2 = requests.get(real_url, headers=headers, timeout=15)  
-                r2.raise_for_status()  
-                bg_img = Image.open(BytesIO(r2.content)).convert('RGBA')  
-            else:  
-                sv.logger.warning(f"[randbg] 未能从 JSON 解析出图片 URL: {data}")  
-        else:  
-            # text/html 等：多半是被反盗链拦截返回了教程/说明页  
-            sv.logger.warning(f"[randbg] 非图片响应，content_type={content_type}，回退纯色背景")  
+        bg_img = get_cached_background(bg_cache_key, source="random")  
     except Exception as e:  
         sv.logger.warning(f"随机背景加载失败: {e}")  
         bg_img = None  
@@ -1782,7 +1937,7 @@ async def daily_activity(session):
     
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="daily")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1814,7 +1969,7 @@ async def story_activity(session):
     msg = msg if len(msg) > len('剧情活动（一周内活动）：\n') else msg + '当前没有剧情活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="story")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1846,7 +2001,7 @@ async def up_gacha(session):
     msg = msg if len(msg) > len('up卡池（一周内活动）：\n') else msg + '当前没有up卡池'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="up_gacha")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1875,7 +2030,7 @@ async def free_gacha(session):
     msg = msg if len(msg) > len('免费十连活动：\n') else msg + '当前没有免费十连活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="free_gacha")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1904,7 +2059,7 @@ async def clan_battle(session):
     msg = msg if len(msg) > len('公会战信息：\n') else msg + '当前没有公会战活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="clan_battle")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1933,7 +2088,7 @@ async def luna_tower(session):
     msg = msg if len(msg) > len('露娜塔信息：\n') else msg + '当前没有露娜塔活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="luna_tower")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1962,7 +2117,7 @@ async def new_unique(session):
     msg = msg if len(msg) > len('新开专武信息：\n') else msg + '当前没有新开专武信息'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="new_unique")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -1991,7 +2146,7 @@ async def arena(session):
     msg = msg if len(msg) > len('斗技场信息：\n') else msg + '当前没有斗技场活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="arena")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -2020,7 +2175,7 @@ async def campaign(session):
     msg = msg if len(msg) > len('庆典/双倍活动：\n') else msg + '当前没有庆典/双倍活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="campaign")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -2049,7 +2204,7 @@ async def dungeon(session):
     msg = msg if len(msg) > len('地下城活动：\n') else msg + '当前没有地下城活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="dungeon")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -2077,7 +2232,7 @@ async def dungeon(session):
     msg = msg if len(msg) > len('深渊讨伐战：\n') else msg + '当前没有深渊讨伐战活动'
     msg_id = (await session.send("⏳ 正在准备，请稍等..."))['message_id']  
     try:  
-        img = await draw_text_image_with_icons("日常活动", msg)  
+        img = await draw_text_image_with_icons("日常活动", msg, bg_cache_key="abyss")  
         await session.send(f"[CQ:image,file=base64://{base64.b64encode(img.getvalue()).decode()}]")  
     except Exception as e:  
         sv.logger.error(f"生成图片时出错: {e}")  
@@ -2466,3 +2621,11 @@ async def check_reminders():
 
 # 启动时注册所有到点提醒任务  
 reschedule_activity_notifications()
+
+# 启动时清空历史遗留的背景图缓存（保留当天缓存，避免重启后重复下载当天背景图）
+try:
+    _removed = clear_bg_cache(keep_today=True)
+    if _removed:
+        sv.logger.info(f"🧹 启动时已清空 { _removed } 个历史背景图缓存文件")
+except Exception as e:
+    sv.logger.error(f"启动时清空背景图缓存失败: {e}")
